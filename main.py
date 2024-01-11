@@ -48,15 +48,15 @@ class MainWindow(QMainWindow):
         spacer_widget=QLabel(' ')
 
         #Input widgets for averaging, replicates, backgrounds, number of used columns and positive controls
-        reprow_label=QLabel('Replicate rows')
-        reprow_label.setToolTip(f"Specify which rows are replicates of each other.{n}E.g. 'A:B:C, D:E' means that rows A, B and C are{n}replicates and row D and E are replicates. If there are{n}no replicates on the plate, leave this field empty.")
+        reprow_label=QLabel('Replicates')
+        reprow_label.setToolTip(f"Specify which rows are replicates of each other.{n}E.g. 'A:B:C, D:E' means that rows A, B and C are{n}replicates and row D and E are replicates. If wells in {n}the same row are replicates of each other, supply these as{n} e.g. A01:A02:A03, ...If there are no replicates on the plate, leave this field empty.")
         self.rep_rows=QLineEdit()
 
         bgrow_label=QLabel('Background rows')
         bgrow_label.setToolTip(f'Specify which rows provide background samples for{n}other rows. E.g "AB:CD, EF:GH" means that rows C{n}and D provide background for A and B and{n}rows G and H provide background to E and F. If there are{n}no background samples on the plate, leave this field empty.")')
         self.bg_rows=QLineEdit()
 
-        avgrow_label=QLabel('Average rows') #Make checkbox
+        avgrow_label=QLabel('Average replicates') #Make checkbox
         avgrow_label.setToolTip('Check to average replicate rows.')
         self.avg_rows=QCheckBox()
 
@@ -410,24 +410,37 @@ class MainWindow(QMainWindow):
             chk=self.check_input_integrity()
             if len(chk)>0:
                 #print error message
-                errormsg=QMessageBox()
-                errormsg.setIcon(QMessageBox.Critical)
-                errormsg.setText(f'{chk[0]}')
-                errormsg.setWindowTitle('Error')
-                errormsg.exec_()
+                self.pop_errormsg(chk)
                 return
             
         else:
-            #If default layout is not custom, we assume that the values entered
-            #into the form are correct, since they are automatically entered.
-            #TODO: MAKE all other boxes/fields unavailable once a default is defined!
-            pass
+            """If default layout is not custom, we assume that the values entered
+            into the form are correct, since they are automatically entered.
+            Only check that file is speciefied correctly"""
+            errors=[]
+            if os.path.isfile(os.path.normpath(filename)):
+                pass
 
+            else:
+                errors.append(f'Invalid filename. Use the browsing option to select the input file.')
+                #print error message
+                self.pop_errormsg(errors)
+                return
+            
         self.plot_button.setEnabled(True)
         #self.plot_button.setStyleSheet('background-color: greenyellow')
         #Calculate metrics
         self.metrics, self.df, self.gams, self.shifted_gams, self.df_raw, self.lowecs, self.noecs, self.mics, self.conc_dict, self.std_dict = self.growth_metrics()
     
+    def pop_errormsg(self, errorlist):
+        """Make a little error window pop up"""
+
+        errormsg=QMessageBox()
+        errormsg.setIcon(QMessageBox.Critical)
+        errormsg.setText(f'{errorlist[0]}')
+        errormsg.setWindowTitle('Error')
+        errormsg.exec_()
+
     def filebuttonclicked(self):
         """Opens an instance of BrowseFiles class once the browse files button is clicked,
         opening a QFileDialog window to select the file from"""
@@ -451,9 +464,11 @@ class MainWindow(QMainWindow):
 
         #Calculate variance between replicates if replicates are provided
         if self.rep_rows.text()!='':
-            std_dict=self.get_replicate_variance(df)
+            std_dict=self.get_replicate_variance(df_raw)
+        else:
+            std_dict=None
 
-        if self.avg_rows.isChecked()==True:
+        if self.avg_rows.isChecked()==True and self.rep_rows.text()!='':
             df=self.average_replicates(df, self.rep_rows.text())
         if self.bg_rows.text()!='':
             df=self.substract_background(df, self.bg_rows.text(), self.avg_rows.isChecked())
@@ -484,7 +499,6 @@ class MainWindow(QMainWindow):
         else:
             conc_dict=None
 
-        print(lowecs) #TODO: Check with Joakim and build in LOWEC minimum effect size
         return metrics, df, gams, shifted_gams, df_raw, lowecs, noecs, mics, conc_dict, std_dict
 
     def check_input_integrity(self):
@@ -508,25 +522,33 @@ class MainWindow(QMainWindow):
         
         #Check replicate row format
         if reps!='':
-            #Check if row separator is correct
-            if ':' in reps:
-                #Check if different replicate pairs are separated correctly
-                if ',' in reps:
-                    #Check that none of the lists after , is empty
-                    lens=[True if len(x.strip())>0 else False for x in reps.split(',')]
-                    if lens==False:
-                        errors.append(f'Invalid replicate entry:{nl}Entry missing after ",".')
-                    #Check that only one row is defined per ':' separator
-                    x=[len(x.strip()) for y in reps.split(',') for x in y.split(':')]
-                    if np.mean(x)!=1:
-                        errors.append(f'Invalid replicate entry:{nl}Only one rowname before ":" allowed')
-                else:
-                    x=[len(x.strip()) for x in reps.split(':')]
-                    if np.mean(x)!=1:
-                        errors.append(f'Invalid replicate entry:{nl}Only one rowname before ":" allowed')
+            #Check if replicates are supplied by row or by column
+            reps_in_rows, reps_in_cols=self.determine_replicate_setup(reps)
 
-            else:
-                errors.append(f'Invalid replicate row separator:{nl}Enter rows that are replicates separated{nl}by ":".')
+            if reps_in_rows==True and reps_in_cols==False:
+                #Check if row separator is correct
+                if ':' in reps:
+                    #Check if different replicate pairs are separated correctly
+                    if ',' in reps:
+                        #Check that none of the lists after , is empty
+                        lens=[True if len(x.strip())>0 else False for x in reps.split(',')]
+                        if lens==False:
+                            errors.append(f'Invalid replicate entry:{nl}Entry missing after ",".')
+                        #Check that only one row is defined per ':' separator
+                        x=[len(x.strip()) for y in reps.split(',') for x in y.split(':')]
+                        if np.mean(x)!=1:
+                            errors.append(f'Invalid replicate entry:{nl}Only one rowname before ":" allowed')
+                    else:
+                        x=[len(x.strip()) for x in reps.split(':')]
+                        if np.mean(x)!=1:
+                            errors.append(f'Invalid replicate entry:{nl}Only one rowname before ":" allowed')
+
+                else:
+                    errors.append(f'Invalid replicate row separator:{nl}Enter rows that are replicates separated{nl}by ":".')
+
+            elif reps_in_rows==False and reps_in_cols==True:
+                #TODO: Build in check for this format here
+                pass
         else:
             pass
 
@@ -544,23 +566,22 @@ class MainWindow(QMainWindow):
                         errors.append(f'Invalid background entry:{nl}Entry missing after ",".')
                     
                     for e in bg.split(','):
-                        for e2 in e.split(':'):
-                            #Check that all values are valid row names and backgrounds
-                            #Samples do not overlap
-                            bgs.extend([x for x in e2[1]])
-                            samps.extend([x for x in e2[0]])
+                        #Check that all values are valid row names and backgrounds
+                        #Samples do not overlap
+                        bgs.extend([x for x in e.strip().split(':')[1]])
+                        samps.extend([x for x in e.strip().split(':')[0]])
 
-                    if any(x in samps for x in bgs):
+                    if any(x.strip() in samps for x in bgs):
                         errors.append(f'Invalid background entry:{nl}Background and sample rows overlap!')
                         
                 else:
-                    for e in bg.split(':'):
-                        #Check that all values are valid row names and backgrounds
-                        #Samples do not overlap
-                        bgs.extend([x for x in e[1]])
-                        samps.extend([x for x in e[0]])
+                    
+                    #Check that all values are valid row names and backgrounds
+                    #Samples do not overlap
+                    bgs.extend([x for x in bg.strip().split(':')[1]])
+                    samps.extend([x for x in bg.strip().split(':')[0]])
 
-                    if any(x in samps for x in bgs):
+                    if any(x.strip() in samps for x in bgs):
                         errors.append(f'Invalid background entry:{nl}Background and sample rows overlap!')
             else:
                 errors.append(f'Invalid background row separator:{nl}Enter rows that are replicates separated{nl}by ":".')
@@ -584,11 +605,11 @@ class MainWindow(QMainWindow):
                         well_corr=[]
                         row_corr=[]
                         for e in pos.split(','):
-                            for e2 in e.split(':'):
-                                if not e2[0][0] in rownames:
-                                    errors.append(f'Invalid positive control row name. Provide positive control positions as e.g {nl}A11+A12:A, B11+B12:B, ...')
-                                if int(e2[0][1:])>12:
-                                    errors.append(f'Invalid positive control column number.Provide positive control positions as e.g {nl}A11+A12:A, B11+B12:B, ...')
+                            e=e.strip()
+                            if not e.split(':')[0].strip()[0] in rownames:
+                                errors.append(f'Invalid positive control row name. Provide positive control positions as e.g {nl}A11+A12:A, B11+B12:B, ...')
+                            if int(e.split(':')[0].strip()[1:])>12:
+                                errors.append(f'Invalid positive control column number.Provide positive control positions as e.g {nl}A11+A12:A, B11+B12:B, ...')
                                 
                     else:
                         #Check that all elements are correctly entered
@@ -603,11 +624,11 @@ class MainWindow(QMainWindow):
                                     errors.append(f'Invalid positive control column number. Provide positive control positions as e.g {nl}A11+A12:A, B11+B12:B, ...')
                         
                 else:
-                    for e in pos.split(':'):
-                        if not e[0][0] in rownames:
-                            errors.append(f'Invalid positive control row name. Provide positive control positions as e.g {nl}A11+A12:A, B11+B12:B, ...')
-                        if int(e[0][1:])>12:
-                            errors.append(f'Invalid positive control column number. Provide positive control positions as e.g {nl}A11+A12:A, B11+B12:B, ...')
+                    
+                    if not bg.strip().split(':')[0][0] in rownames:
+                        errors.append(f'Invalid positive control row name. Provide positive control positions as e.g {nl}A11+A12:A, B11+B12:B, ...')
+                    if int(bg.strip().split(':')[0][1:])>12:
+                        errors.append(f'Invalid positive control column number. Provide positive control positions as e.g {nl}A11+A12:A, B11+B12:B, ...')
                 
             else:
                 errors.append(f'Invalid positive control separator. Provide positive control positions as e.g {nl}A11+A12:A, B11+B12:B, ...')
@@ -648,13 +669,14 @@ class MainWindow(QMainWindow):
                 errors.append('Positive controls are required for statistical testing!')
 
             if ',' in pos:
-                replis=[len(x.split('+')) for x in pos.split(',')]
-                if any(int(r) < 2 for r in replis):
-                    errors.append('minimum of 2 replicates required for statistical testing.')
-            else:
-                replis=pos.split('+')
-                if len(replis)<2:
-                    errors.append('minimum of 2 replicates required for statistical testing.')
+                if '+' in pos:
+                    replis=pos.split('+')
+                    if len(replis)<2:
+                        errors.append('minimum of 2 replicates required for statistical testing.')
+                else:
+                    replis=pos.split(',')
+                    if '' in replis or ' ' in replis:
+                        errors.append('Incorrect positive control input!')
 
             #Check that there are at least 2 replicates per strain
             if not ':' in reps:
@@ -706,38 +728,86 @@ class MainWindow(QMainWindow):
                 else:
                     errors.append('Input to concentration field must be either a list of concentrations or highest concentration followed by dilution.')
 
+        #Check that lowec calculation input is not empty
+        if self.lag_calc_input.text()=='':
+            errors.append('Please provide a threshold for calculating the end of the lag phase!')
+
         return errors
+    
+    def determine_replicate_setup(self, replicate_rows):
+        """Determine whether replicates are defined column wise or row wise"""
+
+        #Check whether replicates are specified by rows (such as when investigating concentration dependent effects, supplied as A:B, C:D ...),
+        #or by columns (e.g when characterizing growth, supplied as A01:A02:A03, A04:A05:A06, ...)
+        reps_in_rows=False
+        reps_in_cols=False
+        if ',' in replicate_rows:
+            all_reps=[len(str(x.strip())) for r in replicate_rows.split(',') for x in r.split(':')]
+            if all(x==1 for x in all_reps):
+                reps_in_rows=True
+            elif all(x==3 for x in all_reps):
+                reps_in_cols=True
+
+        elif ':' in replicate_rows and not ',' in replicate_rows:
+            all_reps=[len(str(x.strip())) for x in replicate_rows.split(':')]
+            if all(x==1 for x in all_reps):
+                reps_in_rows=True
+            elif all(x==3 for x in all_reps):
+                reps_in_cols=True
+
+        return reps_in_rows, reps_in_cols
     
     def average_replicates(self, df, replicate_rows):
         """Average replicate sample rows"""
 
-        #parse replicate rows and average
-        replicate_rows=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(replicate_rows.split(','))]
-        replicate_pairs=[]
-
-        c_nums=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, int(self.num_cols.currentText())+1)]
-        for r in replicate_rows:
-            replicate_pairs.extend([tuple(x+num for x in r) for num in c_nums])
-
+        #Check whether replicates are specified by rows (such as when investigating concentration dependent effects, supplied as A:B, C:D ...),
+        #or by columns (e.g when characterizing growth, supplied as A01:A02:A03, A04:A05:A06, ...)
+        reps_in_rows, reps_in_cols = self.determine_replicate_setup(replicate_rows)
+        
         #rename columns in to remove whitespaces, such that they match the replicate pairs
         df.rename(columns={c:c.strip() for c in df.columns}, inplace=True)
 
-        #Create dataframe
-        avg_df=pd.DataFrame()
-        avg_df['Hour']=df.iloc[:,0]
+        #If replicates on plate are rows:
+        if reps_in_rows==True and reps_in_cols==False:
 
-        #populate dataframe with averages
-        for p in replicate_pairs:
-            avg_df[''.join([x[0] for x in p])+str(p[0][1:3])]=df[[x for x in p]].mean(axis=1)
+            #parse replicate rows and average
+            replicate_rows=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(replicate_rows.split(','))]
+            replicate_pairs=[]
+
+            c_nums=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, int(self.num_cols.currentText())+1)]
+            for r in replicate_rows:
+                replicate_pairs.extend([tuple(x+num for x in r) for num in c_nums])
+
+            #Create dataframe
+            avg_df=pd.DataFrame()
+            avg_df['Hour']=df.iloc[:,0]
+
+            #populate dataframe with averages
+            for p in replicate_pairs:
+                avg_df[''.join([x[0] for x in p])+str(p[0][1:3])]=df[[x for x in p]].mean(axis=1)
+            
+            return avg_df
         
-        return avg_df
 
+        elif reps_in_cols==True and reps_in_rows==False:
+
+            replicate_pairs=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(replicate_rows.split(','))]
+            
+            #Create dataframe
+            avg_df=pd.DataFrame()
+            avg_df['Hour']=df.iloc[:,0]
+
+            #populate dataframe with averages
+            for p in replicate_pairs:
+                avg_df[''.join([x for x in p])]=df[[x for x in p]].mean(axis=1)
+            
+            return avg_df
 
     def substract_background(self, df, bg_rows, average):
         """Substract the background rows from sample rows. Always average the background before substraction if there are several replicates"""
 
         #number of columns used in the analysis
-        c_nums=['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
+        c_nums=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, int(self.num_cols.currentText())+1)]
         #if replicate rows have been averaged
 
         #Remove space characters from bg_rows
@@ -764,7 +834,7 @@ class MainWindow(QMainWindow):
 
         #If replicate rows are not averaged
         else:
-            #If background has several replicates
+            #If background has several replicates for different rows
             if ',' in bg_rows:
                 if len(bg_rows.split(',')[0].split(':')[1])>1:
 
@@ -791,8 +861,29 @@ class MainWindow(QMainWindow):
                         sub_df[p[0]]=df[p[0]]-df[f'{p[1]}_bg']
 
                 return sub_df
+            
+            #If there is one background for all samples, with several background replicates
+            elif not ',' in bg_rows and len(bg_rows.split(':'))>1:
+                bg_pairs=[[x+str(num) for x in bg_rows.split(':')[1].strip()] for num in c_nums]
 
-            #If background is only one row
+                for p in bg_pairs:
+                    #column name will be like CD01_bg, CD02_bg, osv
+                    df[''.join([x[0] for x in p])+str(p[0][1:3])+'_bg']=df[[x for x in p]].mean(axis=1)   
+
+                #construct pairs of unaveraged columns and background columns
+                fin_pairs=[]
+                for r in bg_rows.split(':')[0]:
+                    fin_pairs.extend((r.strip()+str(num), bg_rows.split(':')[1].strip()+str(num)) for num in c_nums)
+
+                #Return dataframe with bg substracted columns
+                    sub_df=pd.DataFrame()
+                    sub_df['Hour']=df.iloc[:,0]
+                    for p in fin_pairs:
+                        sub_df[p[0]]=df[p[0]]-df[f'{p[1]}_bg']
+
+                return sub_df
+            
+            #If background is only one row #TODO: Test this!
             else:
                 #create pairs and substract single bg column
                 bg_pairs=[]
@@ -924,37 +1015,49 @@ class MainWindow(QMainWindow):
         return pd.DataFrame(metrics)
     
     def get_replicate_variance(self, df):
+        """Get standard deviation between replicate curve parameters"""
 
         #Calculate metrics for raw data (background substracted if applicable)
-        sub_df=self.substract_background(df, self.bg_rows.text(), False)
+        if self.bg_rows.text()!='':
+            df=self.substract_background(df, self.bg_rows.text(), False)
 
         #Calculate metrics from previously calculated_df
-        std_metrics=self.calculate_metrics(sub_df)
+        std_metrics=self.calculate_metrics(df)
+
+        #Check whether replicates on plate are defined row or column wise
+        reps_in_rows, reps_in_cols = self.determine_replicate_setup(self.rep_rows.text())
 
         #Get replicate groups
-        replicate_rows=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(self.rep_rows.text().split(','))]
-        replicate_pairs=[]
+        if reps_in_rows==True and reps_in_cols==False:
+            replicate_rows=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(self.rep_rows.text().split(','))]
+            replicate_pairs=[]
 
-        c_nums=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, int(self.num_cols.currentText())+1)]
-        for r in replicate_rows:
-            replicate_pairs.extend([tuple(x+num for x in r) for num in c_nums])
+            c_nums=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, int(self.num_cols.currentText())+1)]
+            for r in replicate_rows:
+                replicate_pairs.extend([tuple(x+num for x in r) for num in c_nums])
 
-        #Calculate replicate standard deviation for each group/concentration combination
-        std_dict={'Replicate group':[], 'std':[]}
+        elif reps_in_rows==False and reps_in_cols==True:
+            replicate_pairs=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(self.rep_rows.text().split(','))]
+
+        #Calculate replicate standard deviation for each parameter and group/concentration combination
+        std_dict={'Replicate group':[], 'lag_std':[], 'auc_std':[], 'yield_std':[], 'slope_std':[]}
 
         for r in replicate_pairs:
-            rep_group=''.join([x[0] for x in r])+str(r[0][-2:])
+
+            if reps_in_rows==True and reps_in_cols==False:
+                rep_group=''.join([x[0] for x in r])+str(r[0][-2:])
+            elif reps_in_rows==False and reps_in_cols==True:
+                rep_group=''.join([x for x in r])
+
             group_df=std_metrics[std_metrics['sample'].isin(r)==True]
             if not group_df.empty:
                 std_dict['Replicate group'].append(rep_group)
 
-                #Append standard deviation according to lowec calculation criterion
-                if 'lag' in self.lowec_calc.currentText():
-                    std_dict['std'].append(round(np.std(group_df['lag_len']),2))
-                elif 'AUC' in self.lowec_calc.currentText():
-                    std_dict['std'].append(round(np.std(group_df['AUC']),2))
-                elif 'yield' in self.lowec_calc.currentText():
-                    std_dict['std'].append(round(np.std(group_df['max_yield']),2))
+                #Append normalized standard deviation for all parameters
+                std_dict['lag_std'].append(round(np.std(group_df['lag_len'])/np.mean(group_df['lag_len']),2))
+                std_dict['auc_std'].append(round(np.std(group_df['AUC'])/np.mean(group_df['AUC']),2))
+                std_dict['yield_std'].append(round(np.std(group_df['max_yield'])/np.mean(group_df['max_yield']),2))
+                std_dict['slope_std'].append(round(np.std(group_df['slope'])/np.mean(group_df['lag_len']),2))
         
         return std_dict
 
@@ -979,7 +1082,7 @@ class MainWindow(QMainWindow):
         if ',' in bgs:
             bg_rows=''.join([x.split(':')[1] for x in bgs.split(',')])
         else:
-            bg_rows=''.join([x.split(':')[1] for x in bgs])
+            bg_rows=bgs.split(':')[1]
         bg_rows=[*bg_rows]
 
         #Get all concentrations used in plate layout
@@ -997,7 +1100,6 @@ class MainWindow(QMainWindow):
         for k, v in pos_pairs.items():
             if not k in processed_reps:
         
-                print(f'k {k}')
                 letters=list({x.strip()[0] for x in v})
                 numbers=list({x.strip()[1:] for x in v})
                 pos_sample_names=[n for n in metrics['sample'] if any(l in n for l in letters) and any(num in n for num in numbers)]
@@ -1093,7 +1195,6 @@ class MainWindow(QMainWindow):
                             rep_dict[c]=comb_lags
                             
                         conc_df=pd.DataFrame(rep_dict, index=None)
-                        print(conc_df)  
                         #Now perform ANOVA
                         #print(f'ANOVA input: {[conc_df[c] for c in [x for x in conc_df.columns]]}')
                         kwa=stats.f_oneway(*[conc_df[c] for c in [x for x in conc_df.columns]])
@@ -1103,28 +1204,62 @@ class MainWindow(QMainWindow):
                         if p_val<0.05:
                             tuk=stats.tukey_hsd(*[conc_df[c] for c in [x for x in conc_df.columns]])
                             tuk_pvals=tuk.pvalue
-                            print(tuk)
 
-                        #Get indexes for positive controls
-                        pos_ind=[(i, c) for i, c in enumerate(conc_df.columns) if any(ps[1:3] in c for ps in rep_pos_names)]
-                            
-                        for ind in pos_ind:
-                            print(f'Ind: {ind}')
-                            #Get respective array from tuk
-                            p_vals_tuk=tuk_pvals[ind[0]]
-                            #Get index of all values < 0.05 and the distance of each p-values index to the index of the positive control
-                            p_vals_sig=[(i, p, abs(ind[0]-i)) for i, p in enumerate(p_vals_tuk) if p<0.05]
-                            print(f'index, p, dist: {p_vals_sig}')
-                            #Sort by last element of tuple
-                            lowec_conc=sorted(p_vals_sig, key=lambda x: x[2])[0][0]
-                            lowec_col=conc_df.columns[lowec_conc]
-                            lowec_list.append(''.join(x)+lowec_col)
-                            #This assumes that concentrations on the plate are in ascending order - correct when there is time!
-                            noec_list.append(''.join(x)+conc_df.columns[lowec_conc+1])
+                            #Get indexes for positive controls
+                            pos_ind=[(i, c) for i, c in enumerate(conc_df.columns) if any(ps[1:3] in c for ps in rep_pos_names)]
+                                
+                            for ind in pos_ind:
+                                #print(f'ind:{ind}')
+                                #Get respective array from tuk
+                                p_vals_tuk=tuk_pvals[ind[0]]
+                                #print(f'p_vals_tuk:{p_vals_tuk}')
+                                #Get index of all values < 0.05 and the distance of each p-values index to the index of the positive control
+                                p_vals_sig=[(i, p, abs(ind[0]-i)) for i, p in enumerate(p_vals_tuk) if p<0.05]
+                                #print(f'index, p, dist: {p_vals_sig}')
 
+                                #If any p-value is <0.05, append
+                                if len(p_vals_sig)>0:
+                                    #Sort by last element of tuple
+                                    lowec_conc=sorted(p_vals_sig, key=lambda x: x[2])[0][0]
+                                    lowec_col=conc_df.columns[lowec_conc]
+                                    lowec_list.append(''.join(x)+lowec_col)
+                                    #This assumes that concentrations on the plate are in descending order - correct when there is time!
+                                    noec_list.append(''.join(x)+conc_df.columns[lowec_conc+1])
+                                else:
+                                    lowec_list.append('None')
+                                    noec_list.append('None')
+                        else:
+                            noec_list.append('None')
+                            lowec_list.append('None')
+
+                        print(x)
                         processed_reps.extend(x)
 
-        return [*set(lowec_list)], [*set(noec_list)]
+        #Filter noec and lowec lists such that only one value per replicate group is present
+        filt_lowec_list=self.filter_lowecs(lowec_list)
+        filt_noec_list=self.filter_lowecs(noec_list)
+        
+        return [*set(filt_lowec_list)], [*set(filt_noec_list)]
+    
+    def filter_lowecs(self, lowec_list):
+        """Filter lowec/noec list such that only one value per replicate group is present.
+        NOTE: This assumes that concentrations go from highest (right side of plate) to
+        lowest (left side of plate)"""
+        
+        filtered_list=[]
+        #Filter out all replicate groups in list
+        rep_groups={x[:-2] for x in lowec_list if not x=='None'}
+
+        #get largest value and append to filtered list
+        for r in rep_groups:
+            max_rep_val=[x for x in lowec_list if r in x and int(x[-2:])==max([int(y[-2:]) for y in lowec_list if r in y])][0]
+            filtered_list.append(max_rep_val)
+        
+        if 'None' in lowec_list:
+            filtered_list.append('None')
+        
+        return filtered_list
+
 
     def calculate_mic(self, metrics):
         """Calculate MIC based on input threshold value"""
@@ -1249,11 +1384,7 @@ class AddLayoutWindow(QWidget):
         chk=self.mainwin.check_input_integrity()
         if len(chk)>0:
             #print error message
-            errormsg=QMessageBox()
-            errormsg.setIcon(QMessageBox.Critical)
-            errormsg.setText(f'{chk[0]}')
-            errormsg.setWindowTitle('Error')
-            errormsg.exec_()
+            self.mainwin.pop_errormsg(chk)
             self.close()
         
         #Add layout values to dictionary
@@ -1376,18 +1507,50 @@ class PlotWindow(QWidget):
         layout.addWidget(spacelabel, 8, 0, 1, 2)
         layout.addWidget(savebutton, 9, 0, 1, 2, alignment=Qt.AlignCenter)
 
-        #When smoothen_curves is not checked, disable type_w
+        #When smoothen_curves is not checked, disable type_w, 'smoothened' option
         if self.mainwin.smoothen_curves.isChecked()==True:
             self.type_w.model().item(2).setEnabled(True)
         else:
             self.type_w.model().item(2).setEnabled(False)
 
+        #When no background is provided, disable 'raw processed' option for curve plotting
+        if self.mainwin.bg_rows.text()=='':
+            self.type_w.model().item(1).setEnabled(False)
+        else:
+            self.type_w.model().item(1).setEnabled(True)
+
         self.setLayout(layout)
 
     def save_results(self):
+        """ write original data and calculated curve parameters to excel file"""
+
+        #Define output filename ending based on selected parameters
+        params=[]
+        if '%' in self.mainwin.lag_calc.currentText():
+            lag_val=f'lag%OD{self.mainwin.lag_calc_input.text()}'
+            params.append(lag_val)
+        else:
+            lag_val=f'lagOD{self.mainwin.lag_calc_input.text()}'
+            params.append(lag_val)
+
+        lowin=self.mainwin.lowec_calc.currentText()
+        if lowin!='None':
+            if 'ANOVA' in lowin:
+                lowend=f'lowec{lowin.replace(" ", "_")}'
+                params.append(lowend)
+            else:
+                lowend=f'lowec{lowin.replace(" ", "_")+self.mainwin.lowec_calc_input.text()}'
+                params.append(lowend)
+
+        if self.mainwin.mic_calc!='None':
+            micend=f'micOD{self.mainwin.mic_input.text()}'
+            params.append(micend)
+        
+        endname='_'.join(params)+'_curve_parameters.xlsx'
+        
         #write calculated data, metric results and plot containing all rows and columns to excel
-        outfile=f'{resource_path(self.mainwin.filelabel.text()).replace(".xlsx","_results.xlsx")}'
-        raw_data=df=self.mainwin.df_raw
+        outfile=f'{resource_path(self.mainwin.filelabel.text()).replace(".xlsx", "_"+endname)}'
+        raw_data=pd.read_excel(resource_path(self.mainwin.filelabel.text()), header=10)
         if self.type_w.currentText()=='Raw':
             df=self.mainwin.df_raw
         elif self.type_w.currentText()=='Raw processed':
@@ -1405,7 +1568,7 @@ class PlotWindow(QWidget):
         metric_results.to_excel(writer, sheet_name='metrics', index=False)
 
         #If replicates are provided, write their standard deviation to the output file
-        if self.mainwin.std_dict!='None':
+        if self.mainwin.std_dict!=None:
             std_df=pd.DataFrame(self.mainwin.std_dict)
             std_df.to_excel(writer, sheet_name='metrics', index=False, startcol=6, startrow=0)
 
@@ -1421,8 +1584,8 @@ class PlotWindow(QWidget):
                 low_df=pd.DataFrame({'Lowecs': sorted(self.mainwin.lowecs)})
                 no_df=pd.DataFrame({'Noecs': sorted(self.mainwin.noecs)})    
 
-            low_df.to_excel(writer, sheet_name='metrics', index=False, startcol=9, startrow=0)
-            no_df.to_excel(writer, sheet_name='metrics', index=False, startcol=12, startrow=0)
+            low_df.to_excel(writer, sheet_name='metrics', index=False, startcol=12, startrow=0)
+            no_df.to_excel(writer, sheet_name='metrics', index=False, startcol=15, startrow=0)
 
         if self.mainwin.mic_calc.currentText()!='None':
             if self.mainwin.concentrations.text()!='':
@@ -1430,7 +1593,7 @@ class PlotWindow(QWidget):
                 self.mainwin.mics['Concentrations']=mic_concs
             
             mic_df=pd.DataFrame(self.mainwin.mics).sort_values(by=['rows'])
-            mic_df.to_excel(writer, sheet_name='metrics', index=False, startcol=14, startrow=0)
+            mic_df.to_excel(writer, sheet_name='metrics', index=False, startcol=18, startrow=0)
 
         #Write plot to file
         #Create plot of all columns to save
@@ -1442,7 +1605,7 @@ class PlotWindow(QWidget):
             ax.plot(raw_data['Hour'], raw_data[c])
 
         ax.set_xlabel('Hour')
-        ax.set_ylabel('OD')
+        ax.set_ylabel('Omnilog Units')
         ax.legend(sorted(raw_data.columns), loc='center right', bbox_to_anchor=(1.3, 0.5))
 
         workbook=writer.book
@@ -1535,12 +1698,7 @@ class PlotWindow(QWidget):
         check=self.check_plotinput_integrity()
         if len(check)>0:
             #print error message
-            errormsg=QMessageBox()
-            errormsg.setIcon(QMessageBox.Critical)
-            errormsg.setText(f'{check[0]}')
-            errormsg.setWindowTitle('Error')
-            errormsg.exec_()
-
+            self.mainwin.pop_errormsg(check)
             return
 
         #select dataframe to plot from based on user selection in QComboBox
@@ -1558,7 +1716,7 @@ class PlotWindow(QWidget):
             #Get columns as list
             if ',' in self.col_w.text() and not '-' in self.col_w.text():
                 cols=['0'+str(x.strip()) if len(str(x.strip()))==1 else str(x.strip()) for x in self.col_w.text().split(',')]
-
+                
             elif '-' in self.col_w.text():
                 x=self.col_w.text().strip().split('-')[0]
                 y=self.col_w.text().strip().split('-')[1]
@@ -1576,6 +1734,14 @@ class PlotWindow(QWidget):
             #Get combination of all selected rows and columns
             col_names=list({str(x.upper())+str(y) for y in cols for x in rows})
 
+            #Check that supplied rows and columns are actually present on plate layout
+            col_chk=[]
+            for c in cols:
+                if not int(c) in [*range(1, int(self.mainwin.num_cols.currentText())+1)]:
+                    col_chk.append(f'Column {str(c)} is not defined in plate layout!')
+                    self.mainwin.pop_errormsg(col_chk)
+                    return
+
         elif self.type_w.currentText()=='Smoothened' or self.type_w.currentText()=='Raw processed':
 
             if self.type_w.currentText()=='Smoothened':
@@ -1591,7 +1757,7 @@ class PlotWindow(QWidget):
                 #Account for column names in the GAM dataframe that have multiple row letters
                 #(As this is how averaged rows are called)
                 single_rows=[x.strip() for x in self.row_w.text().split(',')]
-                rows=list({c.strip()[:-2] for s in single_rows for c in df.columns if s.upper() in c})
+                rows=list({c.strip()[:-2] for s in single_rows for c in df.columns if s.upper() in c and not c=='Hour'})
             else:
                 rows=list({c.strip()[:-2] for c in df.columns if not c =='Hour'})
             
