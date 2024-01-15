@@ -5,6 +5,8 @@ used to calculate curve-specific parameters, such as maximum yield, maximum slop
 can be calculated, either based on statistical analysis of selected curve parameters or user defined cutoffs compared to control samples. The results can be explored through an interactive plotting GUI
 and exported to excel for further Analysis. BGCA is designed to take diverse plate layouts into account, and has options for dealing with sample replicated, positive controls and background samples.
 
+**NOTE: BGCA is currently undergoing active development, so crashes and bugs, as well as minor changes in functionality might still occur**
+
 ## Usage
 
 ### Input data format
