@@ -50,3 +50,25 @@ If no background is included in the plate setup, this field should be left blank
 **Unit**: String that specifies the unit for the **Concentrations** field, e.g ug/ml, mg/l, etc.
 
 
+### Lag/Loec/noec/MIC calculations
+
+It is possible to select methods for the calculation of length of lag phase, LOEC/NOEC and MIC in the lower part of BGCAs main window:
+
+
+![BGCA_LOEC_calc_example](https://github.com/EbmeyerSt/bgca/assets/11669686/8b7e5bff-056b-4f96-acea-cff9fb4e57db)
+
+
+
+**Lag-time calculation**: Decide how end of lag phase should be calculated. Selecting 'OD value' and providing an integer threshold value to the 'OD value' field to the right will calculat the exact time point at which the Omnilog Units on the y-axis of the curve will pass that value. Selecting '% max. OD' and providing an integer threshold value will calculate the exact timepoint when the Omnilog Units on the y-axis pass the supplied percentage of the maximum OD.
+
+**LOEC calculation**: Drop-down list with several available options for calculating LOEC/NOEC values, and the values are calculated based on compairison of either the calculated lag-time, the AUC or the yield (LOEC/NOEC calculation based on slope is still to be implemented). The selected parameter can then either be compared to a user-supplied cutoff value, which is a percentage of the positive control for the respective row. The lowest concentration at which the provided threshold is passed is assigned the LOEC, the next lower concentration is assigned NOEC. Alternatively ANOVA followed by tukeys post-hoc test (**Note: tukeys post-hoc test will be replaced by Dunnets test in the near future**) is performed, and the lowest concentration at which the mean of the selected parameter is significantly different (alpha<=0.05) from other curves is assigned LOEC, the next lower concentration is assigned NOEC. If no LOEC/NOEC should be calculated, select 'None' in the list.
+
+**MIC calculation**: Select 'max. OD' (currently the only method available for MIC calculation) and provide a Omnilog Unit threshold value. The lowest concentration where the Ominlog Units never cross the specified threshold value is assigned as MIC. 
+
+
+
+## Plotting and saving results
+
+
+
+
