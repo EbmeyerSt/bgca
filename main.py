@@ -95,13 +95,13 @@ class MainWindow(QMainWindow):
         self.layout_defaults=QComboBox()
         self.layout_defaults.addItems([k for k, v in json.load(open(resource_path('default_layouts.txt'),'r')).items()])
 
-        lowec_label=QLabel('Lowec calculation')
+        lowec_label=QLabel('Loec calculation')
         lowec_label.setToolTip('Specify if and how LOEC calculation should be done.')
         self.lowec_calc=QComboBox()
         self.lowec_calc.addItems(['None', 'ANOVA lag', 'ANOVA AUC','ANOVA yield', '% PC lag', '% PC AUC', '% PC yield'])
 
         lowec_input_label=QLabel('Threshold value')
-        lowec_input_label.setToolTip('Lowec threshold value, must be float or integer')
+        lowec_input_label.setToolTip('Loec threshold value, must be float or integer')
         self.lowec_input=QLineEdit()
         self.lowec_input.setEnabled(False) #Have input to this disabled if not '% PC lag' or '% PC AUC' are chosen
 
@@ -260,7 +260,7 @@ class MainWindow(QMainWindow):
         self.lag_calc_input_label.setText(self.lag_calc.currentText())
 
     def enable_lowec_input(self):
-        """Enable input for lowec calculation widget and uncheck averaging rows in case ANOVA is chosen"""
+        """Enable input for loec calculation widget and uncheck averaging rows in case ANOVA is chosen"""
 
         if self.lowec_calc.currentText()=='% PC lag' or self.lowec_calc.currentText()=='% PC AUC' \
         or self.lowec_calc.currentText()=='% PC yield':
@@ -286,51 +286,56 @@ class MainWindow(QMainWindow):
 
     def plotbuttonclicked(self):
         """Open plotting window"""
-        
+
+        self.plot_button.setEnabled(False)
         self.w=PlotWindow(self)
         self.w.show()
 
     def match_concentrations(self):
         """Match user provided concentrations with plate column numbers"""
 
-        #Assumes positive controls to be at end or beginning of row, same layout for all rows
-        pos=self.pos_contr.text().split(',')
-        #Get positive control positions
-        if len(pos)>1 and not '+' in pos[0]:
-            pos_cols={x.split(':')[0][-2:] for x in pos}
-        elif len(pos)>1 and '+' in pos[0]:
-            pos_cols={y.strip()[-2:] for x in pos for y in x.strip().split(',')[0].split(':')[0].split('+')}
-        elif len(pos)==1 and '+' in pos[0]:
-            pos_cols={y.strip()[-2:] for x in pos for y in x.strip().split(':')[0].split('+')}
-        elif len(pos)==1 and not '+' in pos[0]:
-            pos_cols={x.split(':')[0] for x in pos}
+        if self.pos_contr.text()!='':
+            #Assumes positive controls to be at end or beginning of row, same layout for all rows
+            pos=self.pos_contr.text().split(',')
+            #Get positive control positions
+            if len(pos)>1 and not '+' in pos[0]:
+                pos_cols={x.split(':')[0][-2:] for x in pos}
+            elif len(pos)>1 and '+' in pos[0]:
+                pos_cols={y.strip()[-2:] for x in pos for y in x.strip().split(',')[0].split(':')[0].split('+')}
+            elif len(pos)==1 and '+' in pos[0]:
+                pos_cols={y.strip()[-2:] for x in pos for y in x.strip().split(':')[0].split('+')}
+            elif len(pos)==1 and not '+' in pos[0]:
+                pos_cols={x.split(':')[0] for x in pos}
 
-        conc_cols=int(self.num_cols.currentText())-len(pos_cols)
+            conc_cols=int(self.num_cols.currentText())-len(pos_cols)
 
-        #match concentration list to plate column number based on where positive controls are located
-        #Again, this assumes that ll positive controls are located either at the beginning or the end of a row
-        if any(x in [float(x) for x in list(pos_cols)] for x in [*range(1,4)]):
-            pos_end=max(list([int(x) for x in list(pos_cols)]))
-            cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(pos_end, conc_cols+1)]
+            #match concentration list to plate column number based on where positive controls are located
+            #Again, this assumes that all positive controls are located either at the beginning or the end of a row
+            if any(x in [float(x) for x in list(pos_cols)] for x in [*range(1,4)]):
+                pos_end=max(list([int(x) for x in list(pos_cols)]))
+                cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(pos_end, conc_cols+1)]
+            else:
+                pos_end=min(list([int(x) for x in list(pos_cols)]))
+                cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, pos_end+1)]
+
         else:
-            pos_end=min(list([int(x) for x in list(pos_cols)]))
-            cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, pos_end+1)]
-        
+            cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, int(self.num_cols.currentText())+1)]   
+            
         if ',' in self.concentrations.text():
             conc_dict={x[0].strip():str(x[1].strip())+self.concentration_unit.text() for x in zip(cols, self.concentrations.text().split(','))}
 
         elif ':' in self.concentrations.text():
             high_conc=float(self.concentrations.text().split(':')[0].strip())
             dilution_factor=float(self.concentrations.text().split(':')[1].strip())
-            
+                
             conc_dict={}
             current_conc=high_conc
             for i, c in enumerate(cols):
                 if i>0:
                     current_conc/=dilution_factor
-                    conc_dict[c]=str(current_conc)+self.concentration_unit.text()
+                    conc_dict[c]=str(round(current_conc), 6)+self.concentration_unit.text()
                 else:
-                    conc_dict[c]=str(current_conc)+self.concentration_unit.text()
+                    conc_dict[c]=str(round(current_conc),6)+self.concentration_unit.text()
 
         return conc_dict
 
@@ -380,6 +385,8 @@ class MainWindow(QMainWindow):
             self.smoothen_curves.setEnabled(False)
             self.pos_contr.setEnabled(False)
             self.num_cols.setEnabled(False)
+            self.lag_calc_input.setEnabled(False)
+            self.mic_input.setEnabled(False)
         else:
             self.rmbutton.setEnabled(False)
             self.rep_rows.setEnabled(True)
@@ -388,6 +395,8 @@ class MainWindow(QMainWindow):
             self.smoothen_curves.setEnabled(True)
             self.pos_contr.setEnabled(True)
             self.num_cols.setEnabled(True)
+            self.lag_calc_input.setEnabled(True)
+            self.mic_input.setEnabled(True)
 
     def submitbuttonclicked(self):
         """Collect info from all widgets after submitbutton has been clicked"""
@@ -648,17 +657,17 @@ class MainWindow(QMainWindow):
             try:
                 float(self.lowec_input.text())
             except:
-                errors.append('Lowec calculation threshold value for lag must be a number!')
+                errors.append('Loec calculation threshold value for lag must be a number!')
             if float(self.lowec_input.text())<=100:
-                errors.append('Lowec calculation threshold for lag should be greater than 100%')
+                errors.append('Loec calculation threshold for lag should be greater than 100%')
         
         elif self.lowec_calc.currentText()=='% PC AUC' or self.lowec_calc.currentText()=='% PC yield':
             try:
                 float(self.lowec_input.text())
             except:
-                errors.append('Lowec calculation threshold value for AUC must be a number!')
+                errors.append('Loec calculation threshold value for AUC must be a number!')
             if float(self.lowec_input.text())>=100:
-                errors.append('Lowec calculation threshold for AUC should be smaller than 100%')   
+                errors.append('Loec calculation threshold for AUC should be smaller than 100%')   
 
         
         elif self.lowec_calc.currentText()=='ANOVA lag' or self.lowec_calc.currentText()=='ANOVA AUC' \
@@ -1002,11 +1011,10 @@ class MainWindow(QMainWindow):
             else:
                 metrics['lag_len'].append(round(24.0))
 
-
-            #Find steepest point on curve over 3 points and calculate steepest slope
+            #Find steepest point on curve over 4 points and calculate steepest slope
             listy=list(df[c])
             listx=list(df.iloc[:,0])
-            diffs=[(ind, ind+2, listy[ind+2]-listy[ind]) if ind+2<=len(listy)-1 else 'endpoint' for ind, i in enumerate(listy)]
+            diffs=[(ind, ind+3, listy[ind+3]-listy[ind]) if ind+3<=len(listy)-1 else 'endpoint' for ind, i in enumerate(listy)]
             diffs_clean=[i for i in diffs if not i=='endpoint' and not i[2]<0]
             steepest=[i for i in diffs_clean if i[2]==max([x[2] for x in diffs_clean])]
             x1, x2, y1, y2 = listx[steepest[0][0]], listx[steepest[0][1]], listy[steepest[0][0]], listy[steepest[0][1]]
@@ -1063,7 +1071,7 @@ class MainWindow(QMainWindow):
 
 
     def calculate_lowec(self, metrics):
-        """Calculate lowec based on user input"""
+        """Calculate loec based on user input"""
 
         #Parse input from lowec calculation form to get positive controls and respective row.
         if ',' in self.pos_contr.text():
@@ -1242,7 +1250,7 @@ class MainWindow(QMainWindow):
         return [*set(filt_lowec_list)], [*set(filt_noec_list)]
     
     def filter_lowecs(self, lowec_list):
-        """Filter lowec/noec list such that only one value per replicate group is present.
+        """Filter loec/noec list such that only one value per replicate group is present.
         NOTE: This assumes that concentrations go from highest (right side of plate) to
         lowest (left side of plate)"""
         
@@ -1514,9 +1522,9 @@ class PlotWindow(QWidget):
             self.type_w.model().item(2).setEnabled(False)
 
         #When no background is provided, disable 'raw processed' option for curve plotting
-        if self.mainwin.bg_rows.text()=='':
+        if self.mainwin.bg_rows.text()=='' and self.mainwin.avg_rows.isChecked()==False:
             self.type_w.model().item(1).setEnabled(False)
-        else:
+        elif self.mainwin.bg_rows.text()!='' or self.mainwin.avg_rows.isChecked()==True:
             self.type_w.model().item(1).setEnabled(True)
 
         self.setLayout(layout)
@@ -1536,10 +1544,10 @@ class PlotWindow(QWidget):
         lowin=self.mainwin.lowec_calc.currentText()
         if lowin!='None':
             if 'ANOVA' in lowin:
-                lowend=f'lowec{lowin.replace(" ", "_")}'
+                lowend=f'loec{lowin.replace(" ", "_")}'
                 params.append(lowend)
             else:
-                lowend=f'lowec{lowin.replace(" ", "_")+self.mainwin.lowec_calc_input.text()}'
+                lowend=f'loec{lowin.replace(" ", "_")+self.mainwin.lowec_calc_input.text()}'
                 params.append(lowend)
 
         if self.mainwin.mic_calc!='None':
@@ -1577,11 +1585,11 @@ class PlotWindow(QWidget):
             if self.mainwin.concentrations.text()!='':
                 low_concs=[conc_dict[x[-2:]] if x[-2:] in conc_dict else 'None' for x in sorted(self.mainwin.lowecs)]
                 no_concs=[conc_dict[x[-2:]] if x[-2:] in conc_dict else 'None' for x in sorted(self.mainwin.noecs)]
-                low_df=pd.DataFrame({'Lowecs': sorted(self.mainwin.lowecs), 'Concentrations': low_concs})
+                low_df=pd.DataFrame({'Loecs': sorted(self.mainwin.lowecs), 'Concentrations': low_concs})
                 no_df=pd.DataFrame({'Noecs': sorted(self.mainwin.noecs), 'Concentrations':no_concs})
 
             else:
-                low_df=pd.DataFrame({'Lowecs': sorted(self.mainwin.lowecs)})
+                low_df=pd.DataFrame({'Loecs': sorted(self.mainwin.lowecs)})
                 no_df=pd.DataFrame({'Noecs': sorted(self.mainwin.noecs)})    
 
             low_df.to_excel(writer, sheet_name='metrics', index=False, startcol=12, startrow=0)
