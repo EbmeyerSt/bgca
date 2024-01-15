@@ -65,10 +65,18 @@ It is possible to select methods for the calculation of length of lag phase, LOE
 
 **MIC calculation**: Select 'max. OD' (currently the only method available for MIC calculation) and provide a Omnilog Unit threshold value. The lowest concentration where the Ominlog Units never cross the specified threshold value is assigned as MIC. 
 
-
+Once all fields for the calculation of the curve parameters are specified, clicking **'submit'** will calculate the curve parameters and allow the user to continue to the plotting window.
 
 ## Plotting and saving results
 
+BGCAs plotting window allows the user to selectively, visually explore the growth data provided in the input file and asses the calculated parameters. The results can then be exported to Excel.
 
+![plotting_window_example](https://github.com/EbmeyerSt/bgca/assets/11669686/753f74c9-e2de-4269-aaf9-ec9177bc9985)
 
+**Rows to plot**: Takes a list of letters as input. E.g. providing 'a, b' will plot data from the rows A and B. Specifying 'Columns to plot' as well is mandatory.
 
+**Columns to plot**: Takes a list or a range of columns to plot. E.g. '1, 2, 3, 4' or '1-4' will plot columns one to four. Specifying 'Rows to plot' as well is mandatory.
+
+**Curve type**: Drop-down list to select the curve type to plot. **Raw** plots the raw (input) data, **Raw processed** plots the averaged and/or background-substracted data, **Smoothened** plots the smoothened curves if the respective box has been checked in the BGCA main window.
+
+Clicking the **Save** button at the buttom of the window will export the data and calculated curve parameters to Excel. The corresponding output file has four sheets: _raw_data_(containing the raw data), _calc_data_(containing the averaged and background substracted data, if applicable), _metrics_ (containing ) and _plot_. 
