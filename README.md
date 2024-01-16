@@ -7,6 +7,7 @@ and exported to excel for further Analysis. BGCA is designed to take diverse pla
 
 **NOTE: BGCA is currently undergoing active development, so crashes and bugs, as well as minor changes in functionality might still occur.**
 
+
 ![bgca_GUI_example](https://github.com/EbmeyerSt/bgca/assets/11669686/1c156251-351c-4d13-b1a5-e91e233302b9)
 
 
@@ -79,4 +80,23 @@ BGCAs plotting window allows the user to selectively, visually explore the growt
 
 **Curve type**: Drop-down list to select the curve type to plot. **Raw** plots the raw (input) data, **Raw processed** plots the averaged and/or background-substracted data, **Smoothened** plots the smoothened curves if the respective box has been checked in the BGCA main window.
 
-Clicking the **Save** button at the buttom of the window will export the data and calculated curve parameters to Excel. The corresponding output file has four sheets: _raw_data_(containing the raw data), _calc_data_(containing the averaged and background substracted data, if applicable), _metrics_ (containing ) and _plot_. 
+## Output
+
+Clicking the **Save** button at the buttom of the window will export the data and calculated curve parameters to Excel. The corresponding output file has four sheets: _raw_data_(containing the raw data), _calc_data_(containing the averaged and background substracted data, if applicable), _metrics_ (containing the calculated metrics, see figure below) and _plot_ (containing a plot of all curves). 
+
+
+<img width="960" alt="output_metrics_example" src="https://github.com/EbmeyerSt/bgca/assets/11669686/8f7f8835-ca80-478a-9899-471a7830953f">
+
+
+## Metric calculations
+
+This section provides details on how the output metrics ae calculated by BGCA.
+
+**max_yield**: The maximum Omnilog Unit value of the curve.
+
+**AUC**: Scikit-learn's auc() function is used to calculate the AUC for each curve, using the trapezoidal rule.
+
+**lag_len**: For **% max. OD**, the exact timepoint when the OD/Omnilog Units pass the specified cutoff is calculated. This is done by determining the first measured timepoint at which the threshold value has been passed, and the measured time point just before the threshold value is passed. The exact time at which OD/Omnilog Units > threshold is then determined by calculating a straight line between the points, according to
+y=mx+b, where m=(y2-y1)/(x2-x1), b=y1-m*x1 and x(threshold)=(y(threshold value)-b)/m
+
+**slope**: Calculated through finding the greatest difference between the first and last of 4 values while using a sliding window approach over the entire curve. The slope is then (y2-y1)/(x2-x1).
