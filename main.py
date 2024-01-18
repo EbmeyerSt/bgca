@@ -16,7 +16,6 @@ from pygam import LinearGAM, s
 from PyQt5.QtCore import *
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import *
-
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
@@ -667,7 +666,7 @@ class MainWindow(QMainWindow):
 
         #Check input for lowec calculation field
                 
-        if self.lowec_calc!='None':
+        if self.lowec_calc.currentText()!='None':
             if pos=='':
                 errors.append('Positive controls are needed in order to determine LOEC/NOEC concentrations!')
 
