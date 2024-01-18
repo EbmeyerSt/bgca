@@ -666,6 +666,11 @@ class MainWindow(QMainWindow):
                 errors.append('Lag calculation threshold value must be a number!')
 
         #Check input for lowec calculation field
+                
+        if self.lowec_calc!='None':
+            if pos=='':
+                errors.append('Positive controls are needed in order to determine LOEC/NOEC concentrations!')
+
         if self.lowec_calc.currentText()=='% PC lag':
             try:
                 float(self.lowec_input.text())
@@ -990,7 +995,6 @@ class MainWindow(QMainWindow):
                     reps=list(''.join([x.strip() for x in self.rep_rows.text().split(':')]))
         
         #Go through each column (curve) and calculate the timepoint where the threshold value is passed
-        print(df.columns)
         for i, c in enumerate(df.iloc[:,1:]):
 
             #Append quickly calculatable metrics
@@ -1001,11 +1005,8 @@ class MainWindow(QMainWindow):
             #Determine positive control for the current column - if several, average them
             c_name=df.iloc[:,1:].columns[i]
 
-            print(c, c_name)
-
             if '%' in lag_type:
                 if self.std_calculated==True:
-                    print('std calculated true')
                     if self.avg_rows.isChecked()==False:
                         pos_entry=[x for x in pos_list if c_name[:-2] in x.split(':')[1]]
 
@@ -1023,7 +1024,6 @@ class MainWindow(QMainWindow):
 
                 else:
                     pos_entry=[x for x in pos_list if c_name[:-2] in x.split(':')[1]]
-                    print(f'pos_entry:{pos_entry}')
 
                 #In cases where no background rows are specified (either background rows or wrong input), set lag time to 24
                 if len(pos_entry)>0:
@@ -1073,7 +1073,6 @@ class MainWindow(QMainWindow):
             m=((y2-y1)/(x2-x1))+0.001
             b=y1-m*x1
 
-            print(f'x1:{x1}, x2:{x2}, y1:{y1}, y2:{y2}, m:{m}, b:{b}')
             #Solve for x at y=lag_crit
             end_lag=(y_crit-b)/m
 
@@ -1192,7 +1191,6 @@ class MainWindow(QMainWindow):
                 pos_sample_names=[n for n in metrics['sample'] if any(l in n for l in letters) and any(num in n for num in numbers)]
                 sample_names=[n for n in metrics['sample'] if k in n and not any(num in n for num in numbers)]
                 
-                print(f'pos_sample_names: {pos_sample_names}, sample_names: {sample_names}, letters: {letters}, numbers: {numbers}')
 
                 #Get positive sample AUC
                 pos_metrics=metrics[metrics['sample'].isin(pos_sample_names)]
