@@ -5,11 +5,30 @@ used to calculate curve-specific parameters, such as maximum yield, maximum slop
 can be calculated, either based on statistical analysis of selected curve parameters or user defined cutoffs compared to control samples. The results can be explored through an interactive plotting GUI
 and exported to excel for further Analysis. BGCA is designed to take diverse plate layouts into account, and has options for dealing with sample replicated, positive controls and background samples.
 
+The BGCA interface can be run from either the command line, using ```python /path/to/main.py``` (of course replacing ```/path/to``` with the local path to ```main.py```) or on windows by running the provided .exe file (if available). This requires 
+**python>=3.10**, but **python<3.12**.
+
 **NOTE: BGCA is currently undergoing active development, so crashes and bugs, as well as minor changes in functionality might still occur.**
 
 
 ![bgca_GUI_example](https://github.com/EbmeyerSt/bgca/assets/11669686/1c156251-351c-4d13-b1a5-e91e233302b9)
 
+## Currently supported plate setups
+
+The variety of experimental setups for growth experiments in a 96 well plate is vast. The setups extensively tested with BGCA are shown below. While analysing different setups using BGCA is certainly possible, there may be bugs that have not been found yet,
+which may cause BGCA to crash. 
+
+### Dose response experimental setup
+
+In a dose-response experimental setting, concentration gradients should go from high concentrations (left on plate) to low concentrations (right on plate). Positive controls (in this context wells containing only bacteria, no drug/chemical are refered to as positive controls) should be placed on the right end of the plate. Replicates should be organized row-wise (R1 and R2 in the figure). If background samples are present, they should be organized in the same manner as bacterial samples, row-wise.
+
+![BGCA_dose_response_setup](https://github.com/EbmeyerSt/bgca/assets/11669686/23c06c56-616f-4c43-b124-d8b6cecb4809)
+
+### Characterization experiments
+
+Characterization experiments can be set up either row wise, as shown above (without positive and background samples), or column wise, as shown below. In this case, three horizontally adjacent wells provide replicates for a single bacterial sample. When using this plate layout, replicates should be provided to the BGCA interface as A01:A02:A03, A04:A05:A06, ... and so on (see section 'usage').
+
+![BGCA_characterization_example](https://github.com/EbmeyerSt/bgca/assets/11669686/1702edba-fa59-4faa-b376-584549bf4854)
 
 
 ## Usage
