@@ -99,7 +99,7 @@ class MainWindow(QMainWindow):
         lowec_label=QLabel('Loec calculation')
         lowec_label.setToolTip('Specify if and how LOEC calculation should be done.')
         self.lowec_calc=QComboBox()
-        self.lowec_calc.addItems(['None', 'ANOVA lag', 'ANOVA AUC','ANOVA yield', '% PC lag', '% PC AUC', '% PC yield'])
+        self.lowec_calc.addItems(['None', 'ANOVA lag', 'ANOVA AUC','ANOVA yield', 'ANOVA slope', '% PC lag', '% PC AUC', '% PC yield', '% PC slope'])
 
         lowec_input_label=QLabel('Threshold value')
         lowec_input_label.setToolTip('Loec threshold value, must be float or integer')
@@ -276,7 +276,7 @@ class MainWindow(QMainWindow):
         """Enable input for loec calculation widget and uncheck averaging rows in case ANOVA is chosen"""
 
         if self.lowec_calc.currentText()=='% PC lag' or self.lowec_calc.currentText()=='% PC AUC' \
-        or self.lowec_calc.currentText()=='% PC yield':
+        or self.lowec_calc.currentText()=='% PC yield' or self.lowec_calc.currentText()=='% PC slope':
             self.lowec_input.setEnabled(True)
         else:
             self.lowec_input.setEnabled(False)
@@ -674,7 +674,8 @@ class MainWindow(QMainWindow):
             if float(self.lowec_input.text())<=100:
                 errors.append('Loec calculation threshold for lag should be greater than 100%')
         
-        elif self.lowec_calc.currentText()=='% PC AUC' or self.lowec_calc.currentText()=='% PC yield':
+        elif self.lowec_calc.currentText()=='% PC AUC' or self.lowec_calc.currentText()=='% PC yield' \
+        or self.lowec_calc.currentText()=='% PC slope':
             try:
                 float(self.lowec_input.text())
             except:
@@ -684,7 +685,7 @@ class MainWindow(QMainWindow):
 
         
         elif self.lowec_calc.currentText()=='ANOVA lag' or self.lowec_calc.currentText()=='ANOVA AUC' \
-        or self.lowec_calc.currentText()=='ANOVA yield':
+        or self.lowec_calc.currentText()=='ANOVA yield' or self.lowec_calc.currentText()=='ANOVA yield':
             
             #Check that there are at least 2 positive controls per strain
             if not ':' in pos:
@@ -1201,55 +1202,89 @@ class MainWindow(QMainWindow):
 
                 #calculate cutoff value for all positive controls separately, then get all rows where lag>lag*crit_mean and auc<auc*crit_mean.
                 #Then sort
+
+                #IMPORTANT: LOEC calculations assume that concentrations on the plates are ordered from high (left side of plate) to low (right side of plate)
+                #Either adjust the plate layout accordingly or change the code
+
                 if self.lowec_calc.currentText()=='% PC lag':
+                    current_loec='None'
                     crit_perc=float(self.lowec_input.text())/100
                     cutoff=pos_metrics['lag_len']*crit_perc
                     crit_mean=np.mean(cutoff)
                     lowec_df=sample_metrics[sample_metrics['lag_len']>crit_mean].sort_values(by=['sample'])
-                    #Plates will have different layouts, so we cannot assume that the higher concentration is always further down the plate.
-                    #Therefore, find the sample where the value is above (lag)/below (AUC), but closest to the threshold
-                    lowec_df['lag_cutoff_diff']=lowec_df['lag_len']-crit_mean
-                    lowec=lowec_df[lowec_df['lag_cutoff_diff']==lowec_df['lag_cutoff_diff'].min()]
-                    #Append these to list
-                    lowec_list.append((k, lowec.iloc[0,0]))
+                    if len(lowec_df)>0:
+                        lowec_list.append(lowec_df.iloc[-1,0])
+                        current_loec=lowec_df.iloc[-1,0]
+                    else:
+                        lowec_list.append('None')
 
                     #Also extract the noec (the concentration before the cutoff value is reached)
-                    noec_df=sample_metrics[sample_metrics['lag_len']<crit_mean].sort_values(by=['sample'])
-                    noec_df['lag_cutoff_diff']=noec_df['lag_len']-crit_mean
-                    noec=noec_df[noec_df['lag_cutoff_diff']==noec_df['lag_cutoff_diff'].max()]
-                    noec_list.append(noec.iloc[0, 0])
+                    if current_loec!='None':
+                        noec_df=sample_metrics[sample_metrics['lag_len']<crit_mean].sort_values(by=['sample'])
+                        noec_list.append(noec_df.iloc[0, 0])
+                    else:
+                        noec_list.append('None')
 
                 elif self.lowec_calc.currentText()=='% PC AUC':
+                    current_loec='None'
                     crit_perc=float(self.lowec_input.text())/100
                     cutoff=pos_metrics['AUC']*crit_perc
                     crit_mean=np.mean(cutoff)
-                    lowec_df=sample_metrics[sample_metrics['AUC']<crit_mean].sort_values(by=['sample'])
-                    lowec_df['AUC_cutoff_diff']=lowec_df['AUC']-crit_mean
-                    lowec=lowec_df[lowec_df['AUC_cutoff_diff']==lowec_df['AUC_cutoff_diff'].max()]
-                    lowec_list.append((k, lowec.iloc[0,0]))
+                    lowec_df=sample_metrics[sample_metrics['AUC']<=crit_mean].sort_values(by=['sample'])
+                    if len(lowec_df)>0:
+                        lowec_list.append(lowec_df.iloc[-1,0])
+                        current_loec=lowec_df.iloc[-1,0]
+                    else:
+                        lowec_list.append('None')
 
-                    noec_df=sample_metrics[sample_metrics['AUC']>crit_mean].sort_values(by=['sample'])
-                    noec_df['AUC_cutoff_diff']=noec_df['AUC']-crit_mean
-                    noec=noec_df[noec_df['AUC_cutoff_diff']==noec_df['AUC_cutoff_diff'].min()]
-                    noec_list.append(noec.iloc[0,0])
+                    #Also extract the noec (the concentration before the cutoff value is reached)
+                    if current_loec!='None':
+                        noec_df=sample_metrics[sample_metrics['AUC']>=crit_mean].sort_values(by=['sample'])
+                        noec_list.append(noec_df.iloc[0, 0])
+                    else:
+                        noec_list.append('None')
 
                 elif self.lowec_calc.currentText()=='% PC yield':
+                    current_loec='None'
                     crit_perc=float(self.lowec_input.text())/100
                     cutoff=pos_metrics['max_yield']*crit_perc
                     crit_mean=np.mean(cutoff)
-                    lowec_df=sample_metrics[sample_metrics['max_yield']<crit_mean].sort_values(by=['sample'])
-                    lowec_df['yield_cutoff_diff']=lowec_df['max_yield']-crit_mean
-                    lowec=lowec_df[lowec_df['yield_cutoff_diff']==lowec_df['yield_cutoff_diff'].max()]
-                    lowec_list.append((k, lowec.iloc[0,0]))
+                    lowec_df=sample_metrics[sample_metrics['max_yield']<=crit_mean].sort_values(by=['sample'])
+                    if len(lowec_df)>0:
+                        lowec_list.append(lowec_df.iloc[-1,0])
+                        current_loec=lowec_df.iloc[-1,0]
+                    else:
+                        lowec_list.append('None')
 
-                    noec_df=sample_metrics[sample_metrics['max_yield']>crit_mean].sort_values(by=['sample'])
-                    noec_df['yield_cutoff_diff']=noec_df['max_yield']-crit_mean
-                    noec=noec_df[noec_df['yield_cutoff_diff']==noec_df['yield_cutoff_diff'].min()]
-                    noec_list.append(noec.iloc[0,0])
+                    #Also extract the noec (the concentration before the cutoff value is reached)
+                    if current_loec!='None':
+                        noec_df=sample_metrics[sample_metrics['max_yield']>crit_mean].sort_values(by=['sample'])
+                        noec_list.append(noec_df.iloc[0, 0])
+                    else:
+                        noec_list.append('None')
+
+                elif self.lowec_calc.currentText()=='% PC slope':
+                    current_loec='None'
+                    crit_perc=float(self.lowec_input.text())/100
+                    cutoff=pos_metrics['slope']*crit_perc
+                    crit_mean=np.mean(cutoff)
+                    lowec_df=sample_metrics[sample_metrics['slope']<=crit_mean].sort_values(by=['sample'])
+                    if len(lowec_df)>0:
+                        lowec_list.append(lowec_df.iloc[-1,0])
+                        current_loec=lowec_df.iloc[-1,0]
+                    else:
+                        lowec_list.append('None')
+
+                    #Also extract the noec (the concentration before the cutoff value is reached)
+                    if current_loec!='None':
+                        noec_df=sample_metrics[sample_metrics['slope']>crit_mean].sort_values(by=['sample'])
+                        noec_list.append(noec_df.iloc[0, 0])
+                    else:
+                        noec_list.append('None')
 
                 #Perform ANOVA and post hoc test
                 elif self.lowec_calc.currentText()=='ANOVA lag' or self.lowec_calc.currentText()=='ANOVA AUC' \
-                or self.lowec_calc.currentText()=='ANOVA yield':
+                or self.lowec_calc.currentText()=='ANOVA yield' or self.lowec_calc.currentText()=='ANOVA slope':
                     #Get lag values for all replicates
                     if ',' in self.rep_rows.text():
                         rep_list=[x.split(':') for x in self.rep_rows.text().replace(' ', '').split(',') if not \
@@ -1278,6 +1313,8 @@ class MainWindow(QMainWindow):
                                 comb_lags=metrics[metrics['sample'].isin(combs)]['AUC'].values
                             elif self.lowec_calc.currentText()=='ANOVA yield':
                                 comb_lags=metrics[metrics['sample'].isin(combs)]['max_yield'].values
+                            elif self.lowec_calc.currentText()=='ANOVA slope':
+                                comb_lags=metrics[metrics['sample'].isin(combs)]['slope'].values
                             rep_dict[c]=comb_lags
                             
                         #Save metrics per replicate and concentration to dataframe
@@ -1296,17 +1333,11 @@ class MainWindow(QMainWindow):
                             conc_df['pc']=conc_df_all[contr_cols]
 
                         #Now perform ANOVA
-                        #print(f'ANOVA input: {[conc_df[c] for c in [x for x in conc_df.columns]]}')
                         kwa=stats.f_oneway(*[conc_df[c] for c in [x for x in conc_df.columns]])
                         p_val=kwa[1]
 
                         #If p-value is <= 0.05, perform dunnets post-hoc test to identify between which groups vs control the difference is significant
                         if p_val<0.05:
-
-                            """Replace tukeys test with Dunnets test
-                            tuk=stats.tukey_hsd(*[conc_df[c] for c in [x for x in conc_df.columns]])
-                            tuk_pvals=tuk.pvalue
-                            """
 
                             tuk=stats.dunnett(*[conc_df[c] for c in [x for x in conc_df.columns] if not c=='pc'], control=np.array(conc_df['pc']))
                             tuk_pvals=tuk.pvalue
@@ -1326,39 +1357,13 @@ class MainWindow(QMainWindow):
                                 lowec_list.append('None')
                                 noec_list.append('None')
                                 
-                                
-                            """The below code is unneccessary with dunnets test, since everything is compared to the positive control
-
-                            #Get indexes for positive controls
-                            pos_ind=[(i, c) for i, c in enumerate(conc_df.columns) if any(ps[1:3] in c for ps in rep_pos_names)]
-                                
-                            for ind in pos_ind:
-                                #print(f'ind:{ind}')
-                                #Get respective array from tuk
-                                p_vals_tuk=tuk_pvals[ind[0]]
-                                #print(f'p_vals_tuk:{p_vals_tuk}')
-                                #Get index of all values < 0.05 and the distance of each p-values index to the index of the positive control
-                                p_vals_sig=[(i, p, abs(ind[0]-i)) for i, p in enumerate(p_vals_tuk) if p<0.05]
-                                #print(f'index, p, dist: {p_vals_sig}')
-
-                                #If any p-value is <0.05, append
-                                if len(p_vals_sig)>0:
-                                    #Sort by last element of tuple
-                                    lowec_conc=sorted(p_vals_sig, key=lambda x: x[2])[0][0]
-                                    lowec_col=conc_df.columns[lowec_conc]
-                                    lowec_list.append(''.join(x)+lowec_col)
-                                    #This assumes that concentrations on the plate are in descending order - correct when there is time!
-                                    noec_list.append(''.join(x)+conc_df.columns[lowec_conc+1])
-                                else:
-                                    lowec_list.append('None')
-                                    noec_list.append('None')
-                            """
                         else:
                             noec_list.append('None')
                             lowec_list.append('None')
 
                         processed_reps.extend(x)
 
+        print(lowec_list, noec_list)
         #Filter noec and lowec lists such that only one value per replicate group is present
         filt_lowec_list=self.filter_lowecs(lowec_list)
         filt_noec_list=self.filter_lowecs(noec_list)
@@ -1663,7 +1668,7 @@ class PlotWindow(QWidget):
                 lowend=f'loec{lowin.replace(" ", "_")}'
                 params.append(lowend)
             else:
-                lowend=f'loec{lowin.replace(" ", "_")+self.mainwin.lowec_calc_input.text()}'
+                lowend=f'loec{lowin.replace(" ", "_")+self.mainwin.lowec_input.text()}'
                 params.append(lowend)
 
         if self.mainwin.mic_calc!='None':
