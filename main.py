@@ -83,6 +83,7 @@ class MainWindow(QMainWindow):
         lag_calc_label.setToolTip('Choose how to calculate the timepoint of lag-phase end, must be float or integer')
         self.lag_calc=QComboBox()
         self.lag_calc.addItems(['OD value', '% max. OD'])
+        self.lag_calc.model().item(1).setEnabled(False)
 
         self.lag_calc_input_label=QLabel(f'{self.lag_calc.currentText()}')
         self.lag_calc_input_label.setToolTip('Enter threshold value')
@@ -156,6 +157,9 @@ class MainWindow(QMainWindow):
         self.mic=None
         self.conc_dict=None
         self.std_dict=None
+        self.std_calculated=False
+        self.reps_in_rows=False
+        self.reps_in_cols=False
 
         #Place widgets in grid
         layout.addWidget(filebuttonlabel, 0, 0, 1, 2, alignment=Qt.AlignBottom)
@@ -218,6 +222,8 @@ class MainWindow(QMainWindow):
         #When value in default_layouts is changed, call set_defaults()
         self.layout_defaults.currentTextChanged.connect(self.set_defaults)
 
+        self.pos_contr.textChanged.connect(self.enableperclag)
+
         #When value in lowec_input is changed, call enable_lowec_input
         self.lowec_calc.currentTextChanged.connect(self.enable_lowec_input)
 
@@ -245,6 +251,13 @@ class MainWindow(QMainWindow):
         #Set central widget of window
         self.setCentralWidget(widget)
 
+    def enableperclag(self):
+        """Enable/Disable % max. OD option for lag calculation with changing positive control inputs"""
+
+        if self.pos_contr.text()=='':
+                self.lag_calc.model().item(1).setEnabled(False)
+        else:
+            self.lag_calc.model().item(1).setEnabled(True)
 
     def enable_mic_input(self):
         """ Enable input for MIC threshold value """
@@ -311,8 +324,8 @@ class MainWindow(QMainWindow):
 
             #match concentration list to plate column number based on where positive controls are located
             #Again, this assumes that all positive controls are located either at the beginning or the end of a row
-            if any(x in [float(x) for x in list(pos_cols)] for x in [*range(1,4)]):
-                pos_end=max(list([int(x) for x in list(pos_cols)]))
+            if any(x in [float(x) for x in list(pos_cols)] for x in [*range(1,5)]):
+                pos_end=max([int(x) for x in list(pos_cols)])
                 cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(pos_end, conc_cols+1)]
             else:
                 pos_end=min(list([int(x) for x in list(pos_cols)]))
@@ -333,9 +346,9 @@ class MainWindow(QMainWindow):
             for i, c in enumerate(cols):
                 if i>0:
                     current_conc/=dilution_factor
-                    conc_dict[c]=str(round(current_conc), 6)+self.concentration_unit.text()
+                    conc_dict[c]=str(round(current_conc,6))+self.concentration_unit.text()
                 else:
-                    conc_dict[c]=str(round(current_conc),6)+self.concentration_unit.text()
+                    conc_dict[c]=str(round(current_conc,6))+self.concentration_unit.text()
 
         return conc_dict
 
@@ -748,36 +761,35 @@ class MainWindow(QMainWindow):
 
         #Check whether replicates are specified by rows (such as when investigating concentration dependent effects, supplied as A:B, C:D ...),
         #or by columns (e.g when characterizing growth, supplied as A01:A02:A03, A04:A05:A06, ...)
-        reps_in_rows=False
-        reps_in_cols=False
+        
         if ',' in replicate_rows:
             all_reps=[len(str(x.strip())) for r in replicate_rows.split(',') for x in r.split(':')]
             if all(x==1 for x in all_reps):
-                reps_in_rows=True
+                self.reps_in_rows=True
             elif all(x==3 for x in all_reps):
-                reps_in_cols=True
+                self.reps_in_cols=True
 
         elif ':' in replicate_rows and not ',' in replicate_rows:
             all_reps=[len(str(x.strip())) for x in replicate_rows.split(':')]
             if all(x==1 for x in all_reps):
-                reps_in_rows=True
+                self.reps_in_rows=True
             elif all(x==3 for x in all_reps):
-                reps_in_cols=True
+                self.reps_in_cols=True
 
-        return reps_in_rows, reps_in_cols
+        return self.reps_in_rows, self.reps_in_cols
     
     def average_replicates(self, df, replicate_rows):
         """Average replicate sample rows"""
 
         #Check whether replicates are specified by rows (such as when investigating concentration dependent effects, supplied as A:B, C:D ...),
         #or by columns (e.g when characterizing growth, supplied as A01:A02:A03, A04:A05:A06, ...)
-        reps_in_rows, reps_in_cols = self.determine_replicate_setup(replicate_rows)
+        self.reps_in_rows, self.reps_in_cols = self.determine_replicate_setup(replicate_rows)
         
         #rename columns in to remove whitespaces, such that they match the replicate pairs
         df.rename(columns={c:c.strip() for c in df.columns}, inplace=True)
 
         #If replicates on plate are rows:
-        if reps_in_rows==True and reps_in_cols==False:
+        if self.reps_in_rows==True and self.reps_in_cols==False:
 
             #parse replicate rows and average
             replicate_rows=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(replicate_rows.split(','))]
@@ -798,7 +810,7 @@ class MainWindow(QMainWindow):
             return avg_df
         
 
-        elif reps_in_cols==True and reps_in_rows==False:
+        elif self.reps_in_cols==True and self.reps_in_rows==False:
 
             replicate_pairs=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(replicate_rows.split(','))]
             
@@ -961,18 +973,77 @@ class MainWindow(QMainWindow):
         lag_type=self.lag_calc.currentText()
         lag_crit=float(self.lag_calc_input.text().strip())
 
+        #Determine positive controls to be used for % max. OD lag calculation
+
+        if ',' in self.pos_contr.text():
+            pos_list=[x.strip() for x in self.pos_contr.text().split(',')]
+        else:
+            pos_list=[x.strip() for x in list(self.pos_contr.text())]
+        
+        #If replicates are to be averaged
+        if self.std_calculated==True:
+            if self.avg_rows.isChecked()==True:
+                if ',' in self.rep_rows.text():
+                    reps=[''.join([y.strip() for y in x.split(':')]) for x in self.rep_rows.text().split(',')]
+                else:
+                    reps=list(''.join([x.strip() for x in self.rep_rows.text().split(':')]))
+        
+        #Go through each column (curve) and calculate the timepoint where the threshold value is passed
+        print(df.columns)
         for i, c in enumerate(df.iloc[:,1:]):
 
+            #Append quickly calculatable metrics
             metrics['sample'].append(c)
             metrics['AUC'].append(round(auc(df.iloc[:,0], df.loc[:,c]),2))
             metrics['max_yield'].append(round(df[c].max(),2))
-            
-            #Calculate end of lag phase based on selected criterion
+
+            #Determine positive control for the current column - if several, average them
+            c_name=df.iloc[:,1:].columns[i]
+
+            print(c, c_name)
+
             if '%' in lag_type:
-                #Get end of lag phase based on % of max_OD. #we want the exact x at end of lag time.Therefore we get the value BEFORE threshold is reached
-                #and AFTER threshold is reached, then calculate x at y=threshold value based on y=mx+b
-                after_end=[(i, x) for i, x in enumerate(df[c]) if x>(float(lag_crit)/100)*df[c].max()]
-                y_crit=(float(lag_crit)/100)*df[c].max()
+                if self.std_calculated==True:
+                    print('std calculated true')
+                    if self.avg_rows.isChecked()==False:
+                        pos_entry=[x for x in pos_list if c_name[:-2] in x.split(':')[1]]
+
+                    #Find positive control columns, replicate rows and combine them  
+                    else:
+                        rep_fit=[r for r in reps if c_name[:-2] in r]
+                        if '+' in pos_list[0]:
+                            positive_columns={y[-2:] for x in pos_list for y in x.split(':')[0].split('+')}
+                        else:
+                            positive_columns={x[-2:] for x in pos_list}
+
+                        pos_entry_set={r+str(x) for x in positive_columns for r in rep_fit}
+
+                        pos_entry=['+'.join(pos_entry_set)+f':{rep_fit[0]}']
+
+                else:
+                    pos_entry=[x for x in pos_list if c_name[:-2] in x.split(':')[1]]
+                    print(f'pos_entry:{pos_entry}')
+
+                #In cases where no background rows are specified (either background rows or wrong input), set lag time to 24
+                if len(pos_entry)>0:
+
+                    #Check if there are several positive controls - If yes, extract and average
+                    if '+' in pos_entry[0]:
+                        pos_cols=pos_entry[0].split(':')[0].split('+')
+                        pos_curve=df[pos_cols].mean(axis=1)
+                    else:
+                        pos_cols=pos_entry[0].split(':')[0]
+                        pos_curve=df[pos_cols]
+
+                    #Calculate end of lag phase based on selected criterion
+                    
+                    #Get end of lag phase based on % of max_OD. #we want the exact x at end of lag time.Therefore we get the value BEFORE threshold is reached
+                    #and AFTER threshold is reached, then calculate x at y=threshold value based on y=mx+b
+                    y_crit=(float(lag_crit)/100)*pos_curve.max()
+                    after_end=[(i, x) for i, x in enumerate(df[c]) if x>y_crit]
+                else:
+                    metrics['lag_len'].append(round(24.0))
+
             else:
                 after_end=[(i, x) for i, x in enumerate(df[c]) if x>lag_crit]
                 y_crit=lag_crit
@@ -982,10 +1053,10 @@ class MainWindow(QMainWindow):
                 after_end=len(df[c])-1
             else:
                 after_end=after_end[0][0]
-            
+                
             #Get index of row before the one that crossed the threshold
             before_end=after_end-1
-        
+            
             #If threshold was crossed at t0, set after end to 1 and before end to 0
             if before_end<0:
                 before_end=0
@@ -1019,6 +1090,11 @@ class MainWindow(QMainWindow):
             steepest=[i for i in diffs_clean if i[2]==max([x[2] for x in diffs_clean])]
             x1, x2, y1, y2 = listx[steepest[0][0]], listx[steepest[0][1]], listy[steepest[0][0]], listy[steepest[0][1]]
             metrics['slope'].append(round((y2-y1)/(x2-x1),2))
+
+        #set std_calculated to false again to enable calculation cycle for std and averaged metrics without the user having to close
+        #the main window
+        if self.std_calculated==True:
+            self.std_calculated=False
 
         return pd.DataFrame(metrics)
     
@@ -1066,6 +1142,8 @@ class MainWindow(QMainWindow):
                 std_dict['auc_std'].append(round(np.std(group_df['AUC'])/np.mean(group_df['AUC']),2))
                 std_dict['yield_std'].append(round(np.std(group_df['max_yield'])/np.mean(group_df['max_yield']),2))
                 std_dict['slope_std'].append(round(np.std(group_df['slope'])/np.mean(group_df['lag_len']),2))
+        
+        self.std_calculated=True
         
         return std_dict
 
@@ -1202,16 +1280,54 @@ class MainWindow(QMainWindow):
                                 comb_lags=metrics[metrics['sample'].isin(combs)]['max_yield'].values
                             rep_dict[c]=comb_lags
                             
-                        conc_df=pd.DataFrame(rep_dict, index=None)
+                        #Save metrics per replicate and concentration to dataframe
+                        conc_df_all=pd.DataFrame(rep_dict, index=None)
+
+                        #Now assign the control group for dunnets test - if there are several, average them
+                        #Get column numbers for positive controls
+                        contr_cols=[str(x[-2:]) for x in v]
+
+                        #Remove positive controls from conc_df_all
+                        conc_df=conc_df_all[[c for c in conc_df_all.columns if not str(c[-2:]) in contr_cols]]
+
+                        if len(contr_cols)>1:
+                            conc_df['pc']=conc_df_all[contr_cols].mean(axis=1)
+                        else:
+                            conc_df['pc']=conc_df_all[contr_cols]
+
                         #Now perform ANOVA
                         #print(f'ANOVA input: {[conc_df[c] for c in [x for x in conc_df.columns]]}')
                         kwa=stats.f_oneway(*[conc_df[c] for c in [x for x in conc_df.columns]])
                         p_val=kwa[1]
 
-                        #If p-value is <= 0.05, perform tukey post_hoc test to identify between which groups the difference is significant
+                        #If p-value is <= 0.05, perform dunnets post-hoc test to identify between which groups vs control the difference is significant
                         if p_val<0.05:
+
+                            """Replace tukeys test with Dunnets test
                             tuk=stats.tukey_hsd(*[conc_df[c] for c in [x for x in conc_df.columns]])
                             tuk_pvals=tuk.pvalue
+                            """
+
+                            tuk=stats.dunnett(*[conc_df[c] for c in [x for x in conc_df.columns] if not c=='pc'], control=np.array(conc_df['pc']))
+                            tuk_pvals=tuk.pvalue
+
+                            #IMPORTANT: following code assumes that concentrations on the plate are going from highest (left on plate) to lowest (right on plate)
+                            #Either the plates have to be designed accordingly, or the code has to be adjusted
+
+                            #get indexes of columns tested against the control, then extract the column with the highest index where p<0.05
+                            #(as that will correspond to the lowest concentration where and effect is observed)
+                            sig_cols=[(i, col) for i, (col, p) in enumerate(zip(conc_df.columns, tuk_pvals)) if p<0.05]
+                            
+                            if len(sig_cols)>0:
+                                sig_cols_sorted=sig_cols.sort(key=lambda x: x[0])
+                                lowec_list.append(''.join(x)+str(sig_cols[-1][1]))
+                                noec_list.append(''.join(x)+conc_df.columns[sig_cols[-1][0]+1])
+                            else:
+                                lowec_list.append('None')
+                                noec_list.append('None')
+                                
+                                
+                            """The below code is unneccessary with dunnets test, since everything is compared to the positive control
 
                             #Get indexes for positive controls
                             pos_ind=[(i, c) for i, c in enumerate(conc_df.columns) if any(ps[1:3] in c for ps in rep_pos_names)]
@@ -1236,11 +1352,11 @@ class MainWindow(QMainWindow):
                                 else:
                                     lowec_list.append('None')
                                     noec_list.append('None')
+                            """
                         else:
                             noec_list.append('None')
                             lowec_list.append('None')
 
-                        print(x)
                         processed_reps.extend(x)
 
         #Filter noec and lowec lists such that only one value per replicate group is present
@@ -1788,7 +1904,10 @@ class PlotWindow(QWidget):
                 cols=['0'+str(x.strip()) if len(str(x.strip()))==1 else str(x.strip()) for x in single_col]
             
             #Get combination of all selected rows and columns
-            col_names=list({str(x)+str(y) for y in cols for x in rows})
+            if self.mainwin.reps_in_rows==True:
+                col_names=list({str(x)+str(y) for y in cols for x in rows})
+            elif self.mainwin.reps_in_cols==True:
+                col_names=[c for c in df if any(r in c for r in rows) and any(col in c for col in cols)]
 
             #Subset metrics dataframe to contain only the specifiec columns - #Turn to string in order to display as QLabel
             sub_df=self.mainwin.metrics[self.mainwin.metrics['sample'].isin(col_names)]
