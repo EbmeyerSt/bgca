@@ -399,6 +399,9 @@ class MainWindow(QMainWindow):
             self.num_cols.setEnabled(False)
             self.lag_calc_input.setEnabled(False)
             self.mic_input.setEnabled(False)
+            self.mic_calc.setEnabled(False)
+            self.lag_calc.setEnabled(False)
+            self.lowec_calc.setEnabled(False)
         else:
             self.rmbutton.setEnabled(False)
             self.rep_rows.setEnabled(True)
@@ -409,6 +412,9 @@ class MainWindow(QMainWindow):
             self.num_cols.setEnabled(True)
             self.lag_calc_input.setEnabled(True)
             self.mic_input.setEnabled(True)
+            self.mic_calc.setEnabled(True)
+            self.lag_calc.setEnabled(True)
+            self.lowec_calc.setEnabled(True)
 
     def submitbuttonclicked(self):
         """Collect info from all widgets after submitbutton has been clicked"""
@@ -1762,8 +1768,7 @@ class PlotWindow(QWidget):
             avg_len=np.mean([len(x.strip()) for x in row_input.split(',')])
             if avg_len!=1:
                 errors.append(row_error)
-                
-                
+                   
             #Check that all elements are letters
             is_letter=[x.strip().isalpha() for x in row_input.split(',')]
             if False in is_letter:
@@ -1972,6 +1977,8 @@ def main():
     window.show()
 
     app.exec()
+    
 
 if __name__=='__main__':
     main()
+    
