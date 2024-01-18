@@ -1,4 +1,4 @@
-pyinstaller --name bgca --onefile --icon=icon.ico ^
+pyinstaller --name bgca --onedir --icon=icon.ico ^
  --add-data="default_layouts.txt;." ^
  --hidden-import=openpyxl.cell._writer ^
  --hidden-import=sklearn.metrics ^
