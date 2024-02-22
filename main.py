@@ -18,23 +18,31 @@ from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import *
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
+import logging as log
+
+log.basicConfig(filename='bgca.log', level=log.DEBUG, format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - [%(funcName)s] - %(message)s')
+console_handler = log.StreamHandler()
+console_handler.setFormatter(log.Formatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - [%(funcName)s] - %(message)s'))
+log.getLogger().addHandler(console_handler)
 
 #https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
 def resource_path(relative_path):
     """ Get absolute path to resource (e.g files), works for dev and for PyInstaller """
+    log.info('Getting absolute path to resource')
     try:
         # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
-    except Exception:
+    except Exception as e:
         base_path = os.path.abspath(".")
-
+        log.warning(f'Error: {e}')
+    log.debug(f'Resource Path: {os.path.join(base_path, relative_path)}')
     return os.path.join(base_path, relative_path)
 
 
 #Create QMainWindow subclass in order to customize main window
 class MainWindow(QMainWindow):
     """Initializes main window and associated widgets"""
-
+    log.info('Initializing Main Window')
     def __init__(self):
         super(MainWindow, self).__init__()
 
@@ -252,7 +260,7 @@ class MainWindow(QMainWindow):
 
     def enableperclag(self):
         """Enable/Disable % max. OD option for lag calculation with changing positive control inputs"""
-
+        log.info('Enabling Percentage Lag')
         if self.pos_contr.text()=='':
                 self.lag_calc.model().item(1).setEnabled(False)
         else:
@@ -260,7 +268,7 @@ class MainWindow(QMainWindow):
 
     def enable_mic_input(self):
         """ Enable input for MIC threshold value """
-
+        log.info('Enabling input for MIC thershold value')
         if self.mic_calc.currentText()!='None':
             self.mic_input.setEnabled(True)
         else:
@@ -268,12 +276,12 @@ class MainWindow(QMainWindow):
 
     def change_laglabel(self):
         """Change label for lag calculation input box on selection of alternative"""
-
+        log.info('Changing label for lag calculation')
         self.lag_calc_input_label.setText(self.lag_calc.currentText())
 
     def enable_lowec_input(self):
         """Enable input for loec calculation widget and uncheck averaging rows in case ANOVA is chosen"""
-
+        log.info('Enabling input for loec calculation')
         if self.lowec_calc.currentText()=='% PC lag' or self.lowec_calc.currentText()=='% PC AUC' \
         or self.lowec_calc.currentText()=='% PC yield' or self.lowec_calc.currentText()=='% PC slope':
             self.lowec_input.setEnabled(True)
@@ -286,74 +294,78 @@ class MainWindow(QMainWindow):
 
     def rmbuttonclicked(self):
         """ Open layout removal window"""
-
+        log.info('Open layout removal window clicked')
         self.w=RemoveLayoutWindow(self)
         self.w.show()
 
     def addbuttonclicked(self):
         """ Open layout saving window """
-
+        log.info('Open layout saving window clicked')
         self.w=AddLayoutWindow(self)
         self.w.show()
 
     def plotbuttonclicked(self):
         """Open plotting window"""
-
+        log.info('Opening plotting window')
         self.plot_button.setEnabled(False)
         self.w=PlotWindow(self)
         self.w.show()
 
     def match_concentrations(self):
         """Match user provided concentrations with plate column numbers"""
+        log.info('Matching user provided concentrations')
+        try:
+            if self.pos_contr.text()!='':
+                #Assumes positive controls to be at end or beginning of row, same layout for all rows
+                pos=self.pos_contr.text().split(',')
+                #Get positive control positions
+                if len(pos)>1 and not '+' in pos[0]:
+                    pos_cols={x.split(':')[0][-2:] for x in pos}
+                elif len(pos)>1 and '+' in pos[0]:
+                    pos_cols={y.strip()[-2:] for x in pos for y in x.strip().split(',')[0].split(':')[0].split('+')}
+                elif len(pos)==1 and '+' in pos[0]:
+                    pos_cols={y.strip()[-2:] for x in pos for y in x.strip().split(':')[0].split('+')}
+                elif len(pos)==1 and not '+' in pos[0]:
+                    pos_cols={x.split(':')[0] for x in pos}
 
-        if self.pos_contr.text()!='':
-            #Assumes positive controls to be at end or beginning of row, same layout for all rows
-            pos=self.pos_contr.text().split(',')
-            #Get positive control positions
-            if len(pos)>1 and not '+' in pos[0]:
-                pos_cols={x.split(':')[0][-2:] for x in pos}
-            elif len(pos)>1 and '+' in pos[0]:
-                pos_cols={y.strip()[-2:] for x in pos for y in x.strip().split(',')[0].split(':')[0].split('+')}
-            elif len(pos)==1 and '+' in pos[0]:
-                pos_cols={y.strip()[-2:] for x in pos for y in x.strip().split(':')[0].split('+')}
-            elif len(pos)==1 and not '+' in pos[0]:
-                pos_cols={x.split(':')[0] for x in pos}
+                conc_cols=int(self.num_cols.currentText())-len(pos_cols)
 
-            conc_cols=int(self.num_cols.currentText())-len(pos_cols)
-
-            #match concentration list to plate column number based on where positive controls are located
-            #Again, this assumes that all positive controls are located either at the beginning or the end of a row
-            if any(x in [float(x) for x in list(pos_cols)] for x in [*range(1,5)]):
-                pos_end=max([int(x) for x in list(pos_cols)])
-                cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(pos_end, conc_cols+1)]
-            else:
-                pos_end=min(list([int(x) for x in list(pos_cols)]))
-                cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, pos_end+1)]
-
-        else:
-            cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, int(self.num_cols.currentText())+1)]   
-            
-        if ',' in self.concentrations.text():
-            conc_dict={x[0].strip():str(x[1].strip())+self.concentration_unit.text() for x in zip(cols, self.concentrations.text().split(','))}
-
-        elif ':' in self.concentrations.text():
-            high_conc=float(self.concentrations.text().split(':')[0].strip())
-            dilution_factor=float(self.concentrations.text().split(':')[1].strip())
-                
-            conc_dict={}
-            current_conc=high_conc
-            for i, c in enumerate(cols):
-                if i>0:
-                    current_conc/=dilution_factor
-                    conc_dict[c]=str(round(current_conc,6))+self.concentration_unit.text()
+                #match concentration list to plate column number based on where positive controls are located
+                #Again, this assumes that all positive controls are located either at the beginning or the end of a row
+                if any(x in [float(x) for x in list(pos_cols)] for x in [*range(1,5)]):
+                    pos_end=max([int(x) for x in list(pos_cols)])
+                    cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(pos_end, conc_cols+1)]
                 else:
-                    conc_dict[c]=str(round(current_conc,6))+self.concentration_unit.text()
+                    pos_end=min(list([int(x) for x in list(pos_cols)]))
+                    cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, pos_end+1)]
 
-        return conc_dict
+            else:
+                cols=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, int(self.num_cols.currentText())+1)]   
+                
+            if ',' in self.concentrations.text():
+                conc_dict={x[0].strip():str(x[1].strip())+self.concentration_unit.text() for x in zip(cols, self.concentrations.text().split(','))}
+
+            elif ':' in self.concentrations.text():
+                high_conc=float(self.concentrations.text().split(':')[0].strip())
+                dilution_factor=float(self.concentrations.text().split(':')[1].strip())
+                    
+                conc_dict={}
+                current_conc=high_conc
+                for i, c in enumerate(cols):
+                    if i>0:
+                        current_conc/=dilution_factor
+                        conc_dict[c]=str(round(current_conc,6))+self.concentration_unit.text()
+                    else:
+                        conc_dict[c]=str(round(current_conc,6))+self.concentration_unit.text()
+
+            return conc_dict
+        except Exception as e:
+            log.critical(f'Error: {e}')
+            exit()
 
     def set_defaults(self):
         """Change values in the form according to default layouts"""
-
+        log.info('Setting default layouts')
         #Load defaults file as dictionary
         layouts=json.load(open(resource_path('default_layouts.txt'), 'r'))
         default=self.layout_defaults.currentText()
@@ -418,7 +430,7 @@ class MainWindow(QMainWindow):
 
     def submitbuttonclicked(self):
         """Collect info from all widgets after submitbutton has been clicked"""
-
+        log.info('Submission clicked')
         filename=self.filelabel.text()
         lowec=self.lowec_calc.currentText()
         default_l=self.layout_defaults.currentText()
@@ -461,7 +473,9 @@ class MainWindow(QMainWindow):
     
     def pop_errormsg(self, errorlist):
         """Make a little error window pop up"""
-
+        log.info('Creating an error message')
+        for error in errorlist:
+            log.warning(error)
         errormsg=QMessageBox()
         errormsg.setIcon(QMessageBox.Critical)
         errormsg.setText(f'{errorlist[0]}')
@@ -471,7 +485,7 @@ class MainWindow(QMainWindow):
     def filebuttonclicked(self):
         """Opens an instance of BrowseFiles class once the browse files button is clicked,
         opening a QFileDialog window to select the file from"""
-        print('Clicked!')
+        log.info('Opening browsing files')
         wig=BrowseFiles()
         wig.show()
         self.filelabel.setText(f'{wig.filename[0]}')
@@ -479,7 +493,7 @@ class MainWindow(QMainWindow):
     def growth_metrics(self):
         """Wrapper function for processing xlsx omnilog input and calculating growth curve metrics"""
         #Read in dataframe
-        
+        log.info('Calculating growth metrics wrapper function')
         if self.filelabel.text().endswith('.xlsx'):
             df=pd.read_excel(resource_path(self.filelabel.text()), header=10)
         elif self.filelabel.text().endswith('.csv'):
@@ -531,7 +545,7 @@ class MainWindow(QMainWindow):
     def check_input_integrity(self):
         """Takes user input from all widgets and checks integrity.
         If input is not correct, and error is returned."""
-
+        log.info('Checking input integrity')
         filename=self.filelabel.text()
         reps=self.rep_rows.text()
         bg=self.bg_rows.text()
@@ -546,6 +560,7 @@ class MainWindow(QMainWindow):
             pass
         else:
             errors.append(f'Invalid filename. Use the browsing option{nl}to select the input file.')
+            log.warning(f'Invalid filename. Use the browsing option{nl}to select the input file.')
         
         #Check replicate row format
         if reps!='':
@@ -561,17 +576,21 @@ class MainWindow(QMainWindow):
                         lens=[True if len(x.strip())>0 else False for x in reps.split(',')]
                         if lens==False:
                             errors.append(f'Invalid replicate entry:{nl}Entry missing after ",".')
+                            
                         #Check that only one row is defined per ':' separator
                         x=[len(x.strip()) for y in reps.split(',') for x in y.split(':')]
                         if np.mean(x)!=1:
                             errors.append(f'Invalid replicate entry:{nl}Only one rowname before ":" allowed')
+                            
                     else:
                         x=[len(x.strip()) for x in reps.split(':')]
                         if np.mean(x)!=1:
                             errors.append(f'Invalid replicate entry:{nl}Only one rowname before ":" allowed')
+                            
 
                 else:
                     errors.append(f'Invalid replicate row separator:{nl}Enter rows that are replicates separated{nl}by ":".')
+                    
 
             elif reps_in_rows==False and reps_in_cols==True:
                 #TODO: Build in check for this format here
@@ -668,6 +687,7 @@ class MainWindow(QMainWindow):
             try:
                 float(self.lag_calc_input.text().strip())
             except:
+                log.error('Lag calculation threshold value must be a number!')
                 errors.append('Lag calculation threshold value must be a number!')
 
         #Check input for lowec calculation field
@@ -764,12 +784,13 @@ class MainWindow(QMainWindow):
         #Check that lowec calculation input is not empty
         if self.lag_calc_input.text()=='':
             errors.append('Please provide a threshold for calculating the end of the lag phase!')
+            log.warning('Please provide a threshold for calculating the end of the lag phase!')
 
         return errors
     
     def determine_replicate_setup(self, replicate_rows):
         """Determine whether replicates are defined column wise or row wise"""
-
+        log.info('Determining replicate setup')
         #Check whether replicates are specified by rows (such as when investigating concentration dependent effects, supplied as A:B, C:D ...),
         #or by columns (e.g when characterizing growth, supplied as A01:A02:A03, A04:A05:A06, ...)
         
@@ -791,7 +812,7 @@ class MainWindow(QMainWindow):
     
     def average_replicates(self, df, replicate_rows):
         """Average replicate sample rows"""
-
+        log.info('Averaging replicates')
         #Check whether replicates are specified by rows (such as when investigating concentration dependent effects, supplied as A:B, C:D ...),
         #or by columns (e.g when characterizing growth, supplied as A01:A02:A03, A04:A05:A06, ...)
         self.reps_in_rows, self.reps_in_cols = self.determine_replicate_setup(replicate_rows)
@@ -837,7 +858,7 @@ class MainWindow(QMainWindow):
 
     def substract_background(self, df, bg_rows, average):
         """Substract the background rows from sample rows. Always average the background before substraction if there are several replicates"""
-
+        log.info('Subtracting background')
         #number of columns used in the analysis
         c_nums=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, int(self.num_cols.currentText())+1)]
         #if replicate rows have been averaged
@@ -933,7 +954,7 @@ class MainWindow(QMainWindow):
 
     def set_to_zero(self,df): #Todo - SHOULD THIS BE KEPT?
         """Avoid negative read values - until a sequence of 5 positive values is encountered, set all values to 0"""
-
+        log.info('Setting negative read values')
         #Check for each column at which index the next 5 values are > 0 - set everything before to 0
         for c in df.iloc[:,1:]:
 
@@ -952,7 +973,7 @@ class MainWindow(QMainWindow):
 
     def shift_curves(self, df):
         """Shift curves such that the first value of each curve is 0"""
-
+        log.info('Shifting curves')
         for c in df.iloc[:,1:]:
             if df.loc[0, c] < 0:
                 df[c]=df[c]+abs(df.loc[0, c])
@@ -965,7 +986,7 @@ class MainWindow(QMainWindow):
     def fit_gam_to_avg(self, df):
         """Fit linear GAM to curve - the model is used for smoothing, resulting in a theoretical curve 
         used for further analysis"""
-
+        log.info('Fitting linear GAM to curve')
         gam_df=pd.DataFrame()
         gam=LinearGAM(s(0), constraints='monotonic_inc')
 
@@ -979,449 +1000,474 @@ class MainWindow(QMainWindow):
 
     def calculate_metrics(self, df):
         """Calculate growth curve metrics - AUC, length of lag phase, maximum yield, slope"""
-        
-        metrics={'sample':[], 'AUC':[], 'lag_len':[], 'max_yield':[], 'slope':[]}
-        lag_type=self.lag_calc.currentText()
-        lag_crit=float(self.lag_calc_input.text().strip())
+        log.info('Calculating metrics')
+        try:
+            metrics={'sample':[], 'AUC':[], 'lag_len':[], 'max_yield':[], 'slope':[]}
+            lag_type=self.lag_calc.currentText()
+            lag_crit=float(self.lag_calc_input.text().strip())
 
-        #Determine positive controls to be used for % max. OD lag calculation
+            #Determine positive controls to be used for % max. OD lag calculation
 
-        if ',' in self.pos_contr.text():
-            pos_list=[x.strip() for x in self.pos_contr.text().split(',')]
-        else:
-            pos_list=[x.strip() for x in list(self.pos_contr.text())]
-        
-        #If replicates are to be averaged
-        if self.std_calculated==True:
-            if self.avg_rows.isChecked()==True:
-                if ',' in self.rep_rows.text():
-                    reps=[''.join([y.strip() for y in x.split(':')]) for x in self.rep_rows.text().split(',')]
-                else:
-                    reps=list(''.join([x.strip() for x in self.rep_rows.text().split(':')]))
-        
-        #Go through each column (curve) and calculate the timepoint where the threshold value is passed
-        for i, c in enumerate(df.iloc[:,1:]):
+            if ',' in self.pos_contr.text():
+                pos_list=[x.strip() for x in self.pos_contr.text().split(',')]
+            else:
+                pos_list=[x.strip() for x in list(self.pos_contr.text())]
+            
+            #If replicates are to be averaged
+            if self.std_calculated==True:
+                if self.avg_rows.isChecked()==True:
+                    if ',' in self.rep_rows.text():
+                        reps=[''.join([y.strip() for y in x.split(':')]) for x in self.rep_rows.text().split(',')]
+                    else:
+                        reps=list(''.join([x.strip() for x in self.rep_rows.text().split(':')]))
+            
+            #Go through each column (curve) and calculate the timepoint where the threshold value is passed
+            for i, c in enumerate(df.iloc[:,1:]):
+                #Append quickly calculatable metrics
+                metrics['sample'].append(c)
+                metrics['AUC'].append(round(auc(df.iloc[:,0], df.loc[:,c]),2))
+                metrics['max_yield'].append(round(df[c].max(),2))
 
-            #Append quickly calculatable metrics
-            metrics['sample'].append(c)
-            metrics['AUC'].append(round(auc(df.iloc[:,0], df.loc[:,c]),2))
-            metrics['max_yield'].append(round(df[c].max(),2))
+                #Determine positive control for the current column - if several, average them
+                c_name=df.iloc[:,1:].columns[i]
 
-            #Determine positive control for the current column - if several, average them
-            c_name=df.iloc[:,1:].columns[i]
+                if '%' in lag_type:
+                    if self.std_calculated==True:
+                        if self.avg_rows.isChecked()==False:
+                            pos_entry=[x for x in pos_list if c_name[:-2] in x.split(':')[1]]
 
-            if '%' in lag_type:
-                if self.std_calculated==True:
-                    if self.avg_rows.isChecked()==False:
+                        #Find positive control columns, replicate rows and combine them  
+                        else:
+                            rep_fit=[r for r in reps if c_name[:-2] in r]
+                            if '+' in pos_list[0]:
+                                positive_columns={y[-2:] for x in pos_list for y in x.split(':')[0].split('+')}
+                            else:
+                                positive_columns={x[-2:] for x in pos_list}
+
+                            pos_entry_set={r+str(x) for x in positive_columns for r in rep_fit}
+
+                            pos_entry=['+'.join(pos_entry_set)+f':{rep_fit[0]}']
+
+                    else:
                         pos_entry=[x for x in pos_list if c_name[:-2] in x.split(':')[1]]
 
-                    #Find positive control columns, replicate rows and combine them  
-                    else:
-                        rep_fit=[r for r in reps if c_name[:-2] in r]
-                        if '+' in pos_list[0]:
-                            positive_columns={y[-2:] for x in pos_list for y in x.split(':')[0].split('+')}
+                    #In cases where no background rows are specified (either background rows or wrong input), set lag time to 24
+                    if len(pos_entry)>0:
+
+                        #Check if there are several positive controls - If yes, extract and average
+                        if '+' in pos_entry[0]:
+                            pos_cols=pos_entry[0].split(':')[0].split('+')
+                            pos_curve=df[pos_cols].mean(axis=1)
                         else:
-                            positive_columns={x[-2:] for x in pos_list}
+                            pos_cols=pos_entry[0].split(':')[0]
+                            pos_curve=df[pos_cols]
 
-                        pos_entry_set={r+str(x) for x in positive_columns for r in rep_fit}
-
-                        pos_entry=['+'.join(pos_entry_set)+f':{rep_fit[0]}']
-
-                else:
-                    pos_entry=[x for x in pos_list if c_name[:-2] in x.split(':')[1]]
-
-                #In cases where no background rows are specified (either background rows or wrong input), set lag time to 24
-                if len(pos_entry)>0:
-
-                    #Check if there are several positive controls - If yes, extract and average
-                    if '+' in pos_entry[0]:
-                        pos_cols=pos_entry[0].split(':')[0].split('+')
-                        pos_curve=df[pos_cols].mean(axis=1)
+                        #Calculate end of lag phase based on selected criterion
+                        
+                        #Get end of lag phase based on % of max_OD. #we want the exact x at end of lag time.Therefore we get the value BEFORE threshold is reached
+                        #and AFTER threshold is reached, then calculate x at y=threshold value based on y=mx+b
+                        y_crit=(float(lag_crit)/100)*pos_curve.max()
+                        after_end=len(df[c])-1
+                        for i, x in enumerate(df[c]):
+                            if x > y_crit:
+                                after_end = i
+                                break
                     else:
-                        pos_cols=pos_entry[0].split(':')[0]
-                        pos_curve=df[pos_cols]
+                        metrics['lag_len'].append(float(df['Hour'].iloc[-1]))
 
-                    #Calculate end of lag phase based on selected criterion
-                    
-                    #Get end of lag phase based on % of max_OD. #we want the exact x at end of lag time.Therefore we get the value BEFORE threshold is reached
-                    #and AFTER threshold is reached, then calculate x at y=threshold value based on y=mx+b
-                    y_crit=(float(lag_crit)/100)*pos_curve.max()
-                    after_end=[(i, x) for i, x in enumerate(df[c]) if x>y_crit]
+                    #Check in case threshold value is never crossed
                 else:
-                    metrics['lag_len'].append(round(24.0))
+                    y_crit=lag_crit
+                    after_end=len(df[c])-1
+                    for i, x in enumerate(df[c]):
+                        if x > y_crit:
+                            after_end = i
+                            break
 
-            else:
-                after_end=[(i, x) for i, x in enumerate(df[c]) if x>lag_crit]
-                y_crit=lag_crit
-
-            #Check in case threshold value is never crossed
-            if len(after_end)==0:
-                after_end=len(df[c])-1
-            else:
-                after_end=after_end[0][0]
+                #Get index of row before the one that crossed the threshold
+                before_end=after_end-1
                 
-            #Get index of row before the one that crossed the threshold
-            before_end=after_end-1
-            
-            #If threshold was crossed at t0, set after end to 1 and before end to 0
-            if before_end<0:
-                before_end=0
-            if before_end==0 and after_end==0:
-                after_end=1
+                #If threshold was crossed at t0, set after end to 1 and before end to 0
+                if before_end<0:
+                    end_lag=0.01
+                    metrics['lag_len'].append(round(end_lag, 2))
+                else:
+                    try:
+                        #if max_OD<=15, set lag end time automatically to 24
+                        if df[c].max()>lag_crit:                
+                            y2=float(df.loc[after_end, c])
+                            y1=float(df.loc[before_end, c])
+                            x2=float(df.iloc[after_end, 0])
+                            x1=float(df.iloc[before_end, 0])
+                            #calculate necessary parameters
+                            m=((y2-y1)/(x2-x1))
+                            b=y1-m*x1
+                            #Solve for x at y=lag_crit
+                            end_lag=(y_crit-b)/m
+                            metrics['lag_len'].append(round(end_lag, 2))
 
-            y2=float(df.loc[after_end, c])
-            y1=float(df.loc[before_end, c])
-            x2=float(df.iloc[after_end, 0])
-            x1=float(df.iloc[before_end, 0])
+                        else:
+                            metrics['lag_len'].append(float(df['Hour'].iloc[-1]))
+                    except Exception as e:
+                        log.critical(f'ERROR: {e}')
+                        exit()
+    
+                #Find steepest point on curve over 4 points and calculate steepest slope
+                listy=list(df[c])
+                listx=list(df.iloc[:,0])
+                diffs=[(ind, ind+3, listy[ind+3]-listy[ind]) if ind+3<=len(listy)-1 else 'endpoint' for ind, i in enumerate(listy)]
+                diffs_clean=[i for i in diffs if not i=='endpoint' and not i[2]<0]
+                steepest=[i for i in diffs_clean if i[2]==max([x[2] for x in diffs_clean])]
+                x1, x2, y1, y2 = listx[steepest[0][0]], listx[steepest[0][1]], listy[steepest[0][0]], listy[steepest[0][1]]
+                metrics['slope'].append(round((y2-y1)/(x2-x1),2))
 
-            #calculate necessary parameters
-            m=((y2-y1)/(x2-x1))+0.001
-            b=y1-m*x1
+            #set std_calculated to false again to enable calculation cycle for std and averaged metrics without the user having to close
+            #the main window
+            if self.std_calculated==True:
+                self.std_calculated=False
 
-            #Solve for x at y=lag_crit
-            end_lag=(y_crit-b)/m
-
-            #if max_OD<=15, set lag end time automatically to 24
-            if df[c].max()>15:
-                metrics['lag_len'].append(round(end_lag, 2))
-            else:
-                metrics['lag_len'].append(round(24.0))
-
-            #Find steepest point on curve over 4 points and calculate steepest slope
-            listy=list(df[c])
-            listx=list(df.iloc[:,0])
-            diffs=[(ind, ind+3, listy[ind+3]-listy[ind]) if ind+3<=len(listy)-1 else 'endpoint' for ind, i in enumerate(listy)]
-            diffs_clean=[i for i in diffs if not i=='endpoint' and not i[2]<0]
-            steepest=[i for i in diffs_clean if i[2]==max([x[2] for x in diffs_clean])]
-            x1, x2, y1, y2 = listx[steepest[0][0]], listx[steepest[0][1]], listy[steepest[0][0]], listy[steepest[0][1]]
-            metrics['slope'].append(round((y2-y1)/(x2-x1),2))
-
-        #set std_calculated to false again to enable calculation cycle for std and averaged metrics without the user having to close
-        #the main window
-        if self.std_calculated==True:
-            self.std_calculated=False
-
-        return pd.DataFrame(metrics)
+            return pd.DataFrame(metrics)
+        except Exception as e:
+            log.critical(f'Error: {e}')
+            exit()
     
     def get_replicate_variance(self, df):
         """Get standard deviation between replicate curve parameters"""
+        log.info('Getting standard deviation')
+        try:
+            #Calculate metrics for raw data (background substracted if applicable)
+            if self.bg_rows.text()!='':
+                df=self.substract_background(df, self.bg_rows.text(), False)
 
-        #Calculate metrics for raw data (background substracted if applicable)
-        if self.bg_rows.text()!='':
-            df=self.substract_background(df, self.bg_rows.text(), False)
+            #Calculate metrics from previously calculated_df
+            std_metrics=self.calculate_metrics(df)
 
-        #Calculate metrics from previously calculated_df
-        std_metrics=self.calculate_metrics(df)
+            #Check whether replicates on plate are defined row or column wise
+            reps_in_rows, reps_in_cols = self.determine_replicate_setup(self.rep_rows.text())
 
-        #Check whether replicates on plate are defined row or column wise
-        reps_in_rows, reps_in_cols = self.determine_replicate_setup(self.rep_rows.text())
-
-        #Get replicate groups
-        if reps_in_rows==True and reps_in_cols==False:
-            replicate_rows=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(self.rep_rows.text().split(','))]
-            replicate_pairs=[]
-
-            c_nums=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, int(self.num_cols.currentText())+1)]
-            for r in replicate_rows:
-                replicate_pairs.extend([tuple(x+num for x in r) for num in c_nums])
-
-        elif reps_in_rows==False and reps_in_cols==True:
-            replicate_pairs=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(self.rep_rows.text().split(','))]
-
-        #Calculate replicate standard deviation for each parameter and group/concentration combination
-        std_dict={'Replicate group':[], 'lag_std':[], 'auc_std':[], 'yield_std':[], 'slope_std':[]}
-
-        for r in replicate_pairs:
-
+            #Get replicate groups
             if reps_in_rows==True and reps_in_cols==False:
-                rep_group=''.join([x[0] for x in r])+str(r[0][-2:])
+                replicate_rows=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(self.rep_rows.text().split(','))]
+                replicate_pairs=[]
+
+                c_nums=['0'+str(i) if len(str(i))<2 else str(i) for i in range(1, int(self.num_cols.currentText())+1)]
+                for r in replicate_rows:
+                    replicate_pairs.extend([tuple(x+num for x in r) for num in c_nums])
+
             elif reps_in_rows==False and reps_in_cols==True:
-                rep_group=''.join([x for x in r])
+                replicate_pairs=[tuple(r.strip() for r in val.split(':')) for i, val in enumerate(self.rep_rows.text().split(','))]
 
-            group_df=std_metrics[std_metrics['sample'].isin(r)==True]
-            if not group_df.empty:
-                std_dict['Replicate group'].append(rep_group)
+            #Calculate replicate standard deviation for each parameter and group/concentration combination
+            std_dict={'Replicate group':[], 'lag_std':[], 'auc_std':[], 'yield_std':[], 'slope_std':[]}
 
-                #Append normalized standard deviation for all parameters
-                std_dict['lag_std'].append(round(np.std(group_df['lag_len'])/np.mean(group_df['lag_len']),2))
-                std_dict['auc_std'].append(round(np.std(group_df['AUC'])/np.mean(group_df['AUC']),2))
-                std_dict['yield_std'].append(round(np.std(group_df['max_yield'])/np.mean(group_df['max_yield']),2))
-                std_dict['slope_std'].append(round(np.std(group_df['slope'])/np.mean(group_df['lag_len']),2))
-        
-        self.std_calculated=True
-        
-        return std_dict
+            for r in replicate_pairs:
 
+                if reps_in_rows==True and reps_in_cols==False:
+                    rep_group=''.join([x[0] for x in r])+str(r[0][-2:])
+                elif reps_in_rows==False and reps_in_cols==True:
+                    rep_group=''.join([x for x in r])
+
+                group_df=std_metrics[std_metrics['sample'].isin(r)==True]
+                if not group_df.empty:
+                    std_dict['Replicate group'].append(rep_group)
+
+                    #Append normalized standard deviation for all parameters
+                    std_dict['lag_std'].append(round(np.std(group_df['lag_len'])/np.mean(group_df['lag_len']),2))
+                    std_dict['auc_std'].append(round(np.std(group_df['AUC'])/np.mean(group_df['AUC']),2))
+                    std_dict['yield_std'].append(round(np.std(group_df['max_yield'])/np.mean(group_df['max_yield']),2))
+                    std_dict['slope_std'].append(round(np.std(group_df['slope'])/np.mean(group_df['lag_len']),2))
+            
+            self.std_calculated=True
+            
+            return std_dict
+        except Exception as e:
+            log.critical(f'Error: {e}')
+            exit()
 
     def calculate_lowec(self, metrics):
         """Calculate loec based on user input"""
-
-        #Parse input from lowec calculation form to get positive controls and respective row.
-        if ',' in self.pos_contr.text():
-            if '+' in self.pos_contr.text():
-                pos_pairs={x.split(':')[1]:[y for y in x.split(':')[0].split('+')] for x in self.pos_contr.text().strip().split(',')}
+        log.info('Calculating loec')
+        try:
+            #Parse input from lowec calculation form to get positive controls and respective row.
+            if ',' in self.pos_contr.text():
+                if '+' in self.pos_contr.text():
+                    pos_pairs={x.split(':')[1]:[y for y in x.split(':')[0].split('+')] for x in self.pos_contr.text().strip().split(',')}
+                else:
+                    pos_pairs={x.split(':')[1]:[x.split(':')[0]] for x in self.pos_contr.text().strip().split(',')}
             else:
-                pos_pairs={x.split(':')[1]:[x.split(':')[0]] for x in self.pos_contr.text().strip().split(',')}
-        else:
-            if '+' in self.pos_contr.text():
-                pos_pairs={x.split(':')[1]:[y for y in x.split(':')[0].split('+')] for x in list(self.pos_contr.text().strip())}
+                if '+' in self.pos_contr.text():
+                    pos_pairs={x.split(':')[1]:[y for y in x.split(':')[0].split('+')] for x in list(self.pos_contr.text().strip())}
+                else:
+                    pos_pairs={x.split(':')[1]:[x.split(':')[0]] for x in list(self.pos_contr.text().strip())}
+
+            #get background rows
+            bgs=self.bg_rows.text().replace(' ', '')
+            if ',' in bgs:
+                bg_rows=''.join([x.split(':')[1] for x in bgs.split(',')])
             else:
-                pos_pairs={x.split(':')[1]:[x.split(':')[0]] for x in list(self.pos_contr.text().strip())}
+                bg_rows=bgs.split(':')[1]
+            bg_rows=[*bg_rows]
 
-        #get background rows
-        bgs=self.bg_rows.text().replace(' ', '')
-        if ',' in bgs:
-            bg_rows=''.join([x.split(':')[1] for x in bgs.split(',')])
-        else:
-            bg_rows=bgs.split(':')[1]
-        bg_rows=[*bg_rows]
+            #Get all concentrations used in plate layout
+            concentrations=['0'+str(c) if len(str(c))==1 else str(c) for c in range(1, int(self.num_cols.currentText())+1)]
 
-        #Get all concentrations used in plate layout
-        concentrations=['0'+str(c) if len(str(c))==1 else str(c) for c in range(1, int(self.num_cols.currentText())+1)]
+            #Now go through dict and metrics dataframe (which contains the calculated metrics)
+            #1. Get rows that contain all letters and number per sample and positive control
 
-        #Now go through dict and metrics dataframe (which contains the calculated metrics)
-        #1. Get rows that contain all letters and number per sample and positive control
+            lowec_list=[]
+            noec_list=[]
 
-        lowec_list=[]
-        noec_list=[]
+            #make list of processed samples as to avoid analyzing the same replicate pairs multiple times
+            processed_reps=[]
 
-        #make list of processed samples as to avoid analyzing the same replicate pairs multiple times
-        processed_reps=[]
+            for k, v in pos_pairs.items():
+                if not k in processed_reps:
+            
+                    letters=list({x.strip()[0] for x in v})
+                    numbers=list({x.strip()[1:] for x in v})
+                    pos_sample_names=[n for n in metrics['sample'] if any(l in n for l in letters) and any(num in n for num in numbers)]
+                    sample_names=[n for n in metrics['sample'] if k in n and not any(num in n for num in numbers)]
+                    
 
-        for k, v in pos_pairs.items():
-            if not k in processed_reps:
-        
-                letters=list({x.strip()[0] for x in v})
-                numbers=list({x.strip()[1:] for x in v})
-                pos_sample_names=[n for n in metrics['sample'] if any(l in n for l in letters) and any(num in n for num in numbers)]
-                sample_names=[n for n in metrics['sample'] if k in n and not any(num in n for num in numbers)]
-                
+                    #Get positive sample AUC
+                    pos_metrics=metrics[metrics['sample'].isin(pos_sample_names)]
 
-                #Get positive sample AUC
-                pos_metrics=metrics[metrics['sample'].isin(pos_sample_names)]
+                    #Get respective sample names
+                    sample_metrics=metrics[metrics['sample'].isin(sample_names)]
 
-                #Get respective sample names
-                sample_metrics=metrics[metrics['sample'].isin(sample_names)]
+                    #calculate cutoff value for all positive controls separately, then get all rows where lag>lag*crit_mean and auc<auc*crit_mean.
+                    #Then sort
 
-                #calculate cutoff value for all positive controls separately, then get all rows where lag>lag*crit_mean and auc<auc*crit_mean.
-                #Then sort
+                    #IMPORTANT: LOEC calculations assume that concentrations on the plates are ordered from high (left side of plate) to low (right side of plate)
+                    #Either adjust the plate layout accordingly or change the code
 
-                #IMPORTANT: LOEC calculations assume that concentrations on the plates are ordered from high (left side of plate) to low (right side of plate)
-                #Either adjust the plate layout accordingly or change the code
-
-                if self.lowec_calc.currentText()=='% PC lag':
-                    current_loec='None'
-                    crit_perc=float(self.lowec_input.text())/100
-                    cutoff=pos_metrics['lag_len']*crit_perc
-                    crit_mean=np.mean(cutoff)
-                    lowec_df=sample_metrics[sample_metrics['lag_len']>crit_mean].sort_values(by=['sample'])
-                    if len(lowec_df)>0:
-                        lowec_list.append(lowec_df.iloc[-1,0])
-                        current_loec=lowec_df.iloc[-1,0]
-                    else:
-                        lowec_list.append('None')
-
-                    #Also extract the noec (the concentration before the cutoff value is reached)
-                    if current_loec!='None':
-                        noec_df=sample_metrics[sample_metrics['lag_len']<crit_mean].sort_values(by=['sample'])
-                        noec_list.append(noec_df.iloc[0, 0])
-                    else:
-                        noec_list.append('None')
-
-                elif self.lowec_calc.currentText()=='% PC AUC':
-                    current_loec='None'
-                    crit_perc=float(self.lowec_input.text())/100
-                    cutoff=pos_metrics['AUC']*crit_perc
-                    crit_mean=np.mean(cutoff)
-                    lowec_df=sample_metrics[sample_metrics['AUC']<=crit_mean].sort_values(by=['sample'])
-                    if len(lowec_df)>0:
-                        lowec_list.append(lowec_df.iloc[-1,0])
-                        current_loec=lowec_df.iloc[-1,0]
-                    else:
-                        lowec_list.append('None')
-
-                    #Also extract the noec (the concentration before the cutoff value is reached)
-                    if current_loec!='None':
-                        noec_df=sample_metrics[sample_metrics['AUC']>=crit_mean].sort_values(by=['sample'])
-                        noec_list.append(noec_df.iloc[0, 0])
-                    else:
-                        noec_list.append('None')
-
-                elif self.lowec_calc.currentText()=='% PC yield':
-                    current_loec='None'
-                    crit_perc=float(self.lowec_input.text())/100
-                    cutoff=pos_metrics['max_yield']*crit_perc
-                    crit_mean=np.mean(cutoff)
-                    lowec_df=sample_metrics[sample_metrics['max_yield']<=crit_mean].sort_values(by=['sample'])
-                    if len(lowec_df)>0:
-                        lowec_list.append(lowec_df.iloc[-1,0])
-                        current_loec=lowec_df.iloc[-1,0]
-                    else:
-                        lowec_list.append('None')
-
-                    #Also extract the noec (the concentration before the cutoff value is reached)
-                    if current_loec!='None':
-                        noec_df=sample_metrics[sample_metrics['max_yield']>crit_mean].sort_values(by=['sample'])
-                        noec_list.append(noec_df.iloc[0, 0])
-                    else:
-                        noec_list.append('None')
-
-                elif self.lowec_calc.currentText()=='% PC slope':
-                    current_loec='None'
-                    crit_perc=float(self.lowec_input.text())/100
-                    cutoff=pos_metrics['slope']*crit_perc
-                    crit_mean=np.mean(cutoff)
-                    lowec_df=sample_metrics[sample_metrics['slope']<=crit_mean].sort_values(by=['sample'])
-                    if len(lowec_df)>0:
-                        lowec_list.append(lowec_df.iloc[-1,0])
-                        current_loec=lowec_df.iloc[-1,0]
-                    else:
-                        lowec_list.append('None')
-
-                    #Also extract the noec (the concentration before the cutoff value is reached)
-                    if current_loec!='None':
-                        noec_df=sample_metrics[sample_metrics['slope']>crit_mean].sort_values(by=['sample'])
-                        noec_list.append(noec_df.iloc[0, 0])
-                    else:
-                        noec_list.append('None')
-
-                #Perform ANOVA and post hoc test
-                elif self.lowec_calc.currentText()=='ANOVA lag' or self.lowec_calc.currentText()=='ANOVA AUC' \
-                or self.lowec_calc.currentText()=='ANOVA yield' or self.lowec_calc.currentText()=='ANOVA slope':
-                    #Get lag values for all replicates
-                    if ',' in self.rep_rows.text():
-                        rep_list=[x.split(':') for x in self.rep_rows.text().replace(' ', '').split(',') if not \
-                                any(b in x for b in bg_rows)]
-                    else:
-                        rep_list=[x.split(':') for x in self.rep_rows.text().replace(' ', '') if not \
-                                any(b in x for b in bg_rows)]
-
-                    #Go through lists of replicates
-                    for x in rep_list:
-
-                        #Create list containing all positive samples between the replicates
-                        rep_pos_names=[]
-                        for y in x:
-                            rep_pos_names.extend(pos_pairs[y.strip()])
-
-                        #Create dictionary containing all lag/AUC values for all replicates with the same concentration
-                        rep_dict={}
-                        for c in concentrations:
-                        #Get all possible combinations between replicates and concentration
-                            combs=[y+str(c) for y in x]
-                            if self.lowec_calc.currentText()=='ANOVA lag':
-                            #Extract lag values from metrics dataframe
-                                comb_lags=metrics[metrics['sample'].isin(combs)]['lag_len'].values
-                            elif self.lowec_calc.currentText()=='ANOVA AUC':
-                                comb_lags=metrics[metrics['sample'].isin(combs)]['AUC'].values
-                            elif self.lowec_calc.currentText()=='ANOVA yield':
-                                comb_lags=metrics[metrics['sample'].isin(combs)]['max_yield'].values
-                            elif self.lowec_calc.currentText()=='ANOVA slope':
-                                comb_lags=metrics[metrics['sample'].isin(combs)]['slope'].values
-                            rep_dict[c]=comb_lags
-                            
-                        #Save metrics per replicate and concentration to dataframe
-                        conc_df_all=pd.DataFrame(rep_dict, index=None)
-
-                        #Now assign the control group for dunnets test - if there are several, average them
-                        #Get column numbers for positive controls
-                        contr_cols=[str(x[-2:]) for x in v]
-
-                        #Remove positive controls from conc_df_all
-                        conc_df=conc_df_all[[c for c in conc_df_all.columns if not str(c[-2:]) in contr_cols]]
-
-                        if len(contr_cols)>1:
-                            conc_df['pc']=conc_df_all[contr_cols].mean(axis=1)
+                    if self.lowec_calc.currentText()=='% PC lag':
+                        current_loec='None'
+                        crit_perc=float(self.lowec_input.text())/100
+                        cutoff=pos_metrics['lag_len']*crit_perc
+                        crit_mean=np.mean(cutoff)
+                        lowec_df=sample_metrics[sample_metrics['lag_len']>crit_mean].sort_values(by=['sample'])
+                        if len(lowec_df)>0:
+                            lowec_list.append(lowec_df.iloc[-1,0])
+                            current_loec=lowec_df.iloc[-1,0]
                         else:
-                            conc_df['pc']=conc_df_all[contr_cols]
-
-                        #Now perform ANOVA
-                        kwa=stats.f_oneway(*[conc_df[c] for c in [x for x in conc_df.columns]])
-                        p_val=kwa[1]
-
-                        #If p-value is <= 0.05, perform dunnets post-hoc test to identify between which groups vs control the difference is significant
-                        if p_val<0.05:
-
-                            tuk=stats.dunnett(*[conc_df[c] for c in [x for x in conc_df.columns] if not c=='pc'], control=np.array(conc_df['pc']))
-                            tuk_pvals=tuk.pvalue
-
-                            #IMPORTANT: following code assumes that concentrations on the plate are going from highest (left on plate) to lowest (right on plate)
-                            #Either the plates have to be designed accordingly, or the code has to be adjusted
-
-                            #get indexes of columns tested against the control, then extract the column with the highest index where p<0.05
-                            #(as that will correspond to the lowest concentration where and effect is observed)
-                            sig_cols=[(i, col) for i, (col, p) in enumerate(zip(conc_df.columns, tuk_pvals)) if p<0.05]
-                            
-                            if len(sig_cols)>0:
-                                sig_cols_sorted=sig_cols.sort(key=lambda x: x[0])
-                                lowec_list.append(''.join(x)+str(sig_cols[-1][1]))
-                                noec_list.append(''.join(x)+conc_df.columns[sig_cols[-1][0]+1])
-                            else:
-                                lowec_list.append('None')
-                                noec_list.append('None')
-                                
-                        else:
-                            noec_list.append('None')
                             lowec_list.append('None')
 
-                        processed_reps.extend(x)
+                        #Also extract the noec (the concentration before the cutoff value is reached)
+                        if current_loec!='None':
+                            noec_df=sample_metrics[sample_metrics['lag_len']<crit_mean].sort_values(by=['sample'])
+                            noec_list.append(noec_df.iloc[0, 0])
+                        else:
+                            noec_list.append('None')
 
-        print(lowec_list, noec_list)
-        #Filter noec and lowec lists such that only one value per replicate group is present
-        filt_lowec_list=self.filter_lowecs(lowec_list)
-        filt_noec_list=self.filter_lowecs(noec_list)
+                    elif self.lowec_calc.currentText()=='% PC AUC':
+                        current_loec='None'
+                        crit_perc=float(self.lowec_input.text())/100
+                        cutoff=pos_metrics['AUC']*crit_perc
+                        crit_mean=np.mean(cutoff)
+                        lowec_df=sample_metrics[sample_metrics['AUC']<=crit_mean].sort_values(by=['sample'])
+                        if len(lowec_df)>0:
+                            lowec_list.append(lowec_df.iloc[-1,0])
+                            current_loec=lowec_df.iloc[-1,0]
+                        else:
+                            lowec_list.append('None')
+
+                        #Also extract the noec (the concentration before the cutoff value is reached)
+                        if current_loec!='None':
+                            noec_df=sample_metrics[sample_metrics['AUC']>=crit_mean].sort_values(by=['sample'])
+                            noec_list.append(noec_df.iloc[0, 0])
+                        else:
+                            noec_list.append('None')
+
+                    elif self.lowec_calc.currentText()=='% PC yield':
+                        current_loec='None'
+                        crit_perc=float(self.lowec_input.text())/100
+                        cutoff=pos_metrics['max_yield']*crit_perc
+                        crit_mean=np.mean(cutoff)
+                        lowec_df=sample_metrics[sample_metrics['max_yield']<=crit_mean].sort_values(by=['sample'])
+                        if len(lowec_df)>0:
+                            lowec_list.append(lowec_df.iloc[-1,0])
+                            current_loec=lowec_df.iloc[-1,0]
+                        else:
+                            lowec_list.append('None')
+
+                        #Also extract the noec (the concentration before the cutoff value is reached)
+                        if current_loec!='None':
+                            noec_df=sample_metrics[sample_metrics['max_yield']>crit_mean].sort_values(by=['sample'])
+                            noec_list.append(noec_df.iloc[0, 0])
+                        else:
+                            noec_list.append('None')
+
+                    elif self.lowec_calc.currentText()=='% PC slope':
+                        current_loec='None'
+                        crit_perc=float(self.lowec_input.text())/100
+                        cutoff=pos_metrics['slope']*crit_perc
+                        crit_mean=np.mean(cutoff)
+                        lowec_df=sample_metrics[sample_metrics['slope']<=crit_mean].sort_values(by=['sample'])
+                        if len(lowec_df)>0:
+                            lowec_list.append(lowec_df.iloc[-1,0])
+                            current_loec=lowec_df.iloc[-1,0]
+                        else:
+                            lowec_list.append('None')
+
+                        #Also extract the noec (the concentration before the cutoff value is reached)
+                        if current_loec!='None':
+                            noec_df=sample_metrics[sample_metrics['slope']>crit_mean].sort_values(by=['sample'])
+                            noec_list.append(noec_df.iloc[0, 0])
+                        else:
+                            noec_list.append('None')
+
+                    #Perform ANOVA and post hoc test
+                    elif self.lowec_calc.currentText()=='ANOVA lag' or self.lowec_calc.currentText()=='ANOVA AUC' \
+                    or self.lowec_calc.currentText()=='ANOVA yield' or self.lowec_calc.currentText()=='ANOVA slope':
+                        #Get lag values for all replicates
+                        if ',' in self.rep_rows.text():
+                            rep_list=[x.split(':') for x in self.rep_rows.text().replace(' ', '').split(',') if not \
+                                    any(b in x for b in bg_rows)]
+                        else:
+                            rep_list=[x.split(':') for x in self.rep_rows.text().replace(' ', '') if not \
+                                    any(b in x for b in bg_rows)]
+
+                        #Go through lists of replicates
+                        for x in rep_list:
+
+                            #Create list containing all positive samples between the replicates
+                            rep_pos_names=[]
+                            for y in x:
+                                rep_pos_names.extend(pos_pairs[y.strip()])
+
+                            #Create dictionary containing all lag/AUC values for all replicates with the same concentration
+                            rep_dict={}
+                            for c in concentrations:
+                            #Get all possible combinations between replicates and concentration
+                                combs=[y+str(c) for y in x]
+                                if self.lowec_calc.currentText()=='ANOVA lag':
+                                #Extract lag values from metrics dataframe
+                                    comb_lags=metrics[metrics['sample'].isin(combs)]['lag_len'].values
+                                elif self.lowec_calc.currentText()=='ANOVA AUC':
+                                    comb_lags=metrics[metrics['sample'].isin(combs)]['AUC'].values
+                                elif self.lowec_calc.currentText()=='ANOVA yield':
+                                    comb_lags=metrics[metrics['sample'].isin(combs)]['max_yield'].values
+                                elif self.lowec_calc.currentText()=='ANOVA slope':
+                                    comb_lags=metrics[metrics['sample'].isin(combs)]['slope'].values
+                                rep_dict[c]=comb_lags
+                                
+                            #Save metrics per replicate and concentration to dataframe
+                            conc_df_all=pd.DataFrame(rep_dict, index=None)
+
+                            #Now assign the control group for dunnets test - if there are several, average them
+                            #Get column numbers for positive controls
+                            contr_cols=[str(x[-2:]) for x in v]
+
+                            #Remove positive controls from conc_df_all
+                            conc_df=conc_df_all[[c for c in conc_df_all.columns if not str(c[-2:]) in contr_cols]]
+
+                            if len(contr_cols)>1:
+                                conc_df['pc']=conc_df_all[contr_cols].mean(axis=1)
+                            else:
+                                conc_df['pc']=conc_df_all[contr_cols]
+
+                            #Now perform ANOVA
+                            kwa=stats.f_oneway(*[conc_df[c] for c in [x for x in conc_df.columns]])
+                            p_val=kwa[1]
+
+                            #If p-value is <= 0.05, perform dunnets post-hoc test to identify between which groups vs control the difference is significant
+                            if p_val<0.05:
+
+                                tuk=stats.dunnett(*[conc_df[c] for c in [x for x in conc_df.columns] if not c=='pc'], control=np.array(conc_df['pc']))
+                                tuk_pvals=tuk.pvalue
+
+                                #IMPORTANT: following code assumes that concentrations on the plate are going from highest (left on plate) to lowest (right on plate)
+                                #Either the plates have to be designed accordingly, or the code has to be adjusted
+
+                                #get indexes of columns tested against the control, then extract the column with the highest index where p<0.05
+                                #(as that will correspond to the lowest concentration where and effect is observed)
+                                sig_cols=[(i, col) for i, (col, p) in enumerate(zip(conc_df.columns, tuk_pvals)) if p<0.05]
+                                
+                                if len(sig_cols)>0:
+                                    sig_cols_sorted=sig_cols.sort(key=lambda x: x[0])
+                                    lowec_list.append(''.join(x)+str(sig_cols[-1][1]))
+                                    noec_list.append(''.join(x)+conc_df.columns[sig_cols[-1][0]+1])
+                                else:
+                                    lowec_list.append('None')
+                                    noec_list.append('None')
+                                    
+                            else:
+                                noec_list.append('None')
+                                lowec_list.append('None')
+
+                            processed_reps.extend(x)
+
+            print(lowec_list, noec_list)
+            #Filter noec and lowec lists such that only one value per replicate group is present
+            filt_lowec_list=self.filter_lowecs(lowec_list)
+            filt_noec_list=self.filter_lowecs(noec_list)
+            
+            return [*set(filt_lowec_list)], [*set(filt_noec_list)]
         
-        return [*set(filt_lowec_list)], [*set(filt_noec_list)]
+        except Exception as e:
+            log.critical(f'Error: {e}')
+            exit()
     
     def filter_lowecs(self, lowec_list):
         """Filter loec/noec list such that only one value per replicate group is present.
         NOTE: This assumes that concentrations go from highest (right side of plate) to
         lowest (left side of plate)"""
-        
-        filtered_list=[]
-        #Filter out all replicate groups in list
-        rep_groups={x[:-2] for x in lowec_list if not x=='None'}
+        log.info('Filtering lowecs')
+        try:
+            filtered_list=[]
+            #Filter out all replicate groups in list
+            rep_groups={x[:-2] for x in lowec_list if not x=='None'}
 
-        #get largest value and append to filtered list
-        for r in rep_groups:
-            max_rep_val=[x for x in lowec_list if r in x and int(x[-2:])==max([int(y[-2:]) for y in lowec_list if r in y])][0]
-            filtered_list.append(max_rep_val)
+            #get largest value and append to filtered list
+            for r in rep_groups:
+                max_rep_val=[x for x in lowec_list if r in x and int(x[-2:])==max([int(y[-2:]) for y in lowec_list if r in y])][0]
+                filtered_list.append(max_rep_val)
+            
+            if 'None' in lowec_list:
+                filtered_list.append('None')
+            
+            return filtered_list
         
-        if 'None' in lowec_list:
-            filtered_list.append('None')
-        
-        return filtered_list
+        except Exception as e:
+            log.critical(f'Error: {e}')
+            exit()
 
 
     def calculate_mic(self, metrics):
         """Calculate MIC based on input threshold value"""
+        log.info('Calculating MICs')
+        try:
+            mics={'rows':[], 'MICs':[]}
 
-        mics={'rows':[], 'MICs':[]}
+            if self.mic_calc.currentText()=='max. OD':
+                cutoff=float(self.mic_input.text())
 
-        if self.mic_calc.currentText()=='max. OD':
-            cutoff=float(self.mic_input.text())
+            #Get unique rows for which mics should be calculated
+            uniques={x[:-2] for x in metrics['sample']}
 
-        #Get unique rows for which mics should be calculated
-        uniques={x[:-2] for x in metrics['sample']}
+            #Get all samples for which the max_yield <= cutoff
+            for u in uniques:
+                mic_samps=metrics[(metrics['max_yield']<=cutoff) & (metrics['sample'].str.contains(u)==True)]['sample']
+                if sorted(mic_samps)!=[]:
+                    #Get lowest concentration with max OD below cutoff value. #TO DATE, THIS ASSUMES THAT CONCENTRATIONS ARE ORDERED
+                    #FROM HIGHEST TO LOWEST ON PLATE!
+                    mic_conc=max([x[-2:] for x in mic_samps])
+                    mics['MICs'].append(mic_conc)
+                    mics['rows'].append(u)
+                else:
+                    mics['MICs'].append('None')
+                    mics['rows'].append(u)
 
-        #Get all samples for which the max_yield <= cutoff
-        for u in uniques:
-            mic_samps=metrics[(metrics['max_yield']<=cutoff) & (metrics['sample'].str.contains(u)==True)]['sample']
-            if sorted(mic_samps)!=[]:
-                #Get lowest concentration with max OD below cutoff value. #TO DATE, THIS ASSUMES THAT CONCENTRATIONS ARE ORDERED
-                #FROM HIGHEST TO LOWEST ON PLATE!
-                mic_conc=max([x[-2:] for x in mic_samps])
-                mics['MICs'].append(mic_conc)
-                mics['rows'].append(u)
-            else:
-                mics['MICs'].append('None')
-                mics['rows'].append(u)
-
-        return mics
+            return mics
+        
+        except Exception as e:
+            log.critical(f'Error: {e}')
+            exit()
 
 class RemoveLayoutWindow(QWidget):
     """ Class for removing custom layouts"""
-
+    log.info('Removing Custom Layouts')
     def __init__(self, mainwin):
 
         super().__init__()
@@ -1430,7 +1476,7 @@ class RemoveLayoutWindow(QWidget):
         self.initGUI(mainwin)
     
     def initGUI(self, mainwin):
-
+        log.info('Initiating GUI')
         layout=QGridLayout()
         self.mainwin=mainwin
 
@@ -1453,7 +1499,7 @@ class RemoveLayoutWindow(QWidget):
 
     def remove_layout(self):
         """ Remove selected layout from defaults"""
-
+        log.info('Removing layouts from defaults')
         #Load saved default layouts
         defaults=json.load(open(resource_path('default_layouts.txt'), 'r'))
         target=self.mainwin.layout_defaults.currentText()
@@ -1477,7 +1523,7 @@ class RemoveLayoutWindow(QWidget):
     
 class AddLayoutWindow(QWidget):
     """ Class for adding custom layouts to layout selection"""
-
+    log.info('Adding custom layout')
     def __init__(self, mainwin):
 
         super().__init__()
@@ -1487,7 +1533,7 @@ class AddLayoutWindow(QWidget):
 
     def initGUI(self, mainwin):
         """Define window look and function"""
-
+        log.info('Initiating GUI 2')
         layout=QGridLayout()
         self.mainwin=mainwin
 
@@ -1513,6 +1559,7 @@ class AddLayoutWindow(QWidget):
 
         """ Add new layout to file"""
         #Check data integrity
+        log.info('Saving layout')
         chk=self.mainwin.check_input_integrity()
         if len(chk)>0:
             #print error message
@@ -1574,7 +1621,7 @@ class AddLayoutWindow(QWidget):
 
 class MplCanvas(FigureCanvasQTAgg):
     """Class for canvas to plot on"""
-
+    log.info('Canvas')
     def __init__(self, parent='None', width=7, height=7, dpi=100):
         fig=Figure(figsize=(width, height), dpi=dpi)
         fig.subplots_adjust(right=0.8)
@@ -1583,7 +1630,7 @@ class MplCanvas(FigureCanvasQTAgg):
 
 class PlotWindow(QWidget):
     """Class to open a separate window for plotting the curves"""
-
+    log.info('Separate window')
     def __init__(self, mainwin):
 
         super().__init__()
@@ -1594,7 +1641,7 @@ class PlotWindow(QWidget):
     
     def initUI(self, mainwin):
         """Build plotting UI """
-
+        log.info('Initiating plotting GUI')
         layout=QGridLayout()
         
         #Add mainwin as class attribute in order to access attributes of main window
@@ -1653,105 +1700,120 @@ class PlotWindow(QWidget):
 
         self.setLayout(layout)
 
+    from PyQt5.QtWidgets import QFileDialog
+
     def save_results(self):
         """ write original data and calculated curve parameters to excel file"""
+        log.info('Saving Results')
+        try:
+            # Ask user for the file name and save location
+            file_path, _ = QFileDialog.getSaveFileName(self, "Save File", "", "Excel Files (*.xlsx)")
 
-        #Define output filename ending based on selected parameters
-        params=[]
-        if '%' in self.mainwin.lag_calc.currentText():
-            lag_val=f'lag%OD{self.mainwin.lag_calc_input.text()}'
-            params.append(lag_val)
-        else:
-            lag_val=f'lagOD{self.mainwin.lag_calc_input.text()}'
-            params.append(lag_val)
-
-        lowin=self.mainwin.lowec_calc.currentText()
-        if lowin!='None':
-            if 'ANOVA' in lowin:
-                lowend=f'loec{lowin.replace(" ", "_")}'
-                params.append(lowend)
-            else:
-                lowend=f'loec{lowin.replace(" ", "_")+self.mainwin.lowec_input.text()}'
-                params.append(lowend)
-
-        if self.mainwin.mic_calc!='None':
-            micend=f'micOD{self.mainwin.mic_input.text()}'
-            params.append(micend)
-        
-        endname='_'.join(params)+'_curve_parameters.xlsx'
-        
-        #write calculated data, metric results and plot containing all rows and columns to excel
-        outfile=f'{resource_path(self.mainwin.filelabel.text()).replace(".xlsx", "_"+endname)}'
-        raw_data=pd.read_excel(resource_path(self.mainwin.filelabel.text()), header=10)
-        if self.type_w.currentText()=='Raw':
-            df=self.mainwin.df_raw
-        elif self.type_w.currentText()=='Raw processed':
-            df=self.mainwin.df
-        elif self.type_w.currentText()=='Smoothened':
-            df=self.mainwin.shifted_gams
-
-        metric_results=self.mainwin.metrics
-        conc_dict=self.mainwin.conc_dict
-
-        #Write dataframes to outfile, with several sheets - raw data, calculated data, metrics
-        writer=pd.ExcelWriter(outfile, engine='xlsxwriter')
-        raw_data.to_excel(writer, sheet_name='raw_data', index=False)
-        df.to_excel(writer, sheet_name='calc_data', index=False)
-        metric_results.to_excel(writer, sheet_name='metrics', index=False)
-
-        #If replicates are provided, write their standard deviation to the output file
-        if self.mainwin.std_dict!=None:
-            std_df=pd.DataFrame(self.mainwin.std_dict)
-            std_df.to_excel(writer, sheet_name='metrics', index=False, startcol=6, startrow=0)
-
-        if self.mainwin.lowec_calc.currentText()!='None':
-            #If concentrations are provided, add a column with the respective concentration to dataframe
-            if self.mainwin.concentrations.text()!='':
-                low_concs=[conc_dict[x[-2:]] if x[-2:] in conc_dict else 'None' for x in sorted(self.mainwin.lowecs)]
-                no_concs=[conc_dict[x[-2:]] if x[-2:] in conc_dict else 'None' for x in sorted(self.mainwin.noecs)]
-                low_df=pd.DataFrame({'Loecs': sorted(self.mainwin.lowecs), 'Concentrations': low_concs})
-                no_df=pd.DataFrame({'Noecs': sorted(self.mainwin.noecs), 'Concentrations':no_concs})
-
-            else:
-                low_df=pd.DataFrame({'Loecs': sorted(self.mainwin.lowecs)})
-                no_df=pd.DataFrame({'Noecs': sorted(self.mainwin.noecs)})    
-
-            low_df.to_excel(writer, sheet_name='metrics', index=False, startcol=12, startrow=0)
-            no_df.to_excel(writer, sheet_name='metrics', index=False, startcol=15, startrow=0)
-
-        if self.mainwin.mic_calc.currentText()!='None':
-            if self.mainwin.concentrations.text()!='':
-                mic_concs=[conc_dict[x[-2:]] if x in conc_dict else 'None' for x in self.mainwin.mics['MICs']]
-                self.mainwin.mics['Concentrations']=mic_concs
+            if not file_path:
+                return  # User canceled the dialog
             
-            mic_df=pd.DataFrame(self.mainwin.mics).sort_values(by=['rows'])
-            mic_df.to_excel(writer, sheet_name='metrics', index=False, startcol=18, startrow=0)
+            # Define output filename ending based on selected parameters
+            params = []
+            if '%' in self.mainwin.lag_calc.currentText():
+                lag_val = f'lag%OD{self.mainwin.lag_calc_input.text()}'
+                params.append(lag_val)
+            else:
+                lag_val = f'lagOD{self.mainwin.lag_calc_input.text()}'
+                params.append(lag_val)
 
-        #Write plot to file
-        #Create plot of all columns to save
-        fig=plt.figure(figsize=(10, 8))
-        fig.subplots_adjust(right=0.8)
-        ax=plt.subplot(111)
+            lowin = self.mainwin.lowec_calc.currentText()
+            if lowin != 'None':
+                if 'ANOVA' in lowin:
+                    lowend = f'loec{lowin.replace(" ", "_")}'
+                    params.append(lowend)
+                else:
+                    lowend = f'loec{lowin.replace(" ", "_")+self.mainwin.lowec_input.text()}'
+                    params.append(lowend)
 
-        for c in sorted([c for c in raw_data.columns if not c=='Hour']):
-            ax.plot(raw_data['Hour'], raw_data[c])
+            if self.mainwin.mic_calc != 'None':
+                micend = f'micOD{self.mainwin.mic_input.text()}'
+                params.append(micend)
+            
+            endname = '_'.join(params) + '_curve_parameters.xlsx'
+            
+            # Concatenate file_path and endname to get the full file path
+            outfile = file_path.replace(".xlsx", "_" + endname)
+            
+            # Write calculated data, metric results, and plot containing all rows and columns to Excel
+            raw_data = pd.read_excel(resource_path(self.mainwin.filelabel.text()), header=10)
+            if self.type_w.currentText() == 'Raw':
+                df = self.mainwin.df_raw
+            elif self.type_w.currentText() == 'Raw processed':
+                df = self.mainwin.df
+            elif self.type_w.currentText() == 'Smoothened':
+                df = self.mainwin.shifted_gams
 
-        ax.set_xlabel('Hour')
-        ax.set_ylabel('Omnilog Units')
-        ax.legend(sorted(raw_data.columns), loc='center right', bbox_to_anchor=(1.3, 0.5))
+            metric_results = self.mainwin.metrics
+            conc_dict = self.mainwin.conc_dict
 
-        workbook=writer.book
-        sheet=workbook.add_worksheet('plot')
+            # Write dataframes to outfile, with several sheets - raw data, calculated data, metrics
+            writer = pd.ExcelWriter(outfile, engine='xlsxwriter')
+            raw_data.to_excel(writer, sheet_name='raw_data', index=False)
+            df.to_excel(writer, sheet_name='calc_data', index=False)
+            metric_results.to_excel(writer, sheet_name='metrics', index=False)
 
-        imgdata=io.BytesIO()
-        fig.savefig(imgdata, dpi=300, format='png')
-        sheet.insert_image(1, 1, '', {'image_data':imgdata})
+            # If replicates are provided, write their standard deviation to the output file
+            if self.mainwin.std_dict is not None:
+                std_df = pd.DataFrame(self.mainwin.std_dict)
+                std_df.to_excel(writer, sheet_name='metrics', index=False, startcol=6, startrow=0)
 
-        workbook.close()
+            if self.mainwin.lowec_calc.currentText() != 'None':
+                # If concentrations are provided, add a column with the respective concentration to dataframe
+                if self.mainwin.concentrations.text() != '':
+                    low_concs = [conc_dict[x[-2:]] if x[-2:] in conc_dict else 'None' for x in sorted(self.mainwin.lowecs)]
+                    no_concs = [conc_dict[x[-2:]] if x[-2:] in conc_dict else 'None' for x in sorted(self.mainwin.noecs)]
+                    low_df = pd.DataFrame({'Loecs': sorted(self.mainwin.lowecs), 'Concentrations': low_concs})
+                    no_df = pd.DataFrame({'Noecs': sorted(self.mainwin.noecs), 'Concentrations': no_concs})
+
+                else:
+                    low_df = pd.DataFrame({'Loecs': sorted(self.mainwin.lowecs)})
+                    no_df = pd.DataFrame({'Noecs': sorted(self.mainwin.noecs)})
+
+                low_df.to_excel(writer, sheet_name='metrics', index=False, startcol=12, startrow=0)
+                no_df.to_excel(writer, sheet_name='metrics', index=False, startcol=15, startrow=0)
+
+            if self.mainwin.mic_calc.currentText() != 'None':
+                if self.mainwin.concentrations.text() != '':
+                    mic_concs = [conc_dict[x[-2:]] if x in conc_dict else 'None' for x in self.mainwin.mics['MICs']]
+                    self.mainwin.mics['Concentrations'] = mic_concs
+                
+                mic_df = pd.DataFrame(self.mainwin.mics).sort_values(by=['rows'])
+                mic_df.to_excel(writer, sheet_name='metrics', index=False, startcol=18, startrow=0)
+
+            # Write plot to file
+            # Create plot of all columns to save
+            fig = plt.figure(figsize=(10, 8))
+            fig.subplots_adjust(right=0.8)
+            ax = plt.subplot(111)
+
+            for c in sorted([c for c in raw_data.columns if not c == 'Hour']):
+                ax.plot(raw_data['Hour'], raw_data[c])
+
+            ax.set_xlabel('Hour')
+            ax.set_ylabel('Omnilog Units')
+            ax.legend(sorted(raw_data.columns), loc='center right', bbox_to_anchor=(1.3, 0.5))
+
+            workbook = writer.book
+            sheet = workbook.add_worksheet('plot')
+
+            imgdata = io.BytesIO()
+            fig.savefig(imgdata, dpi=300, format='png')
+            sheet.insert_image(1, 1, '', {'image_data': imgdata})
+
+            workbook.close()
+
+        except Exception as e:
+            log.error(f'Error: {e}')
 
  
     def check_plotinput_integrity(self):
         """Check input of plot curves"""
+        log.info('Check plot input integrity')
         row_input=self.row_w.text()
         col_input=self.col_w.text()
         allowed_letters=['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
@@ -1824,7 +1886,7 @@ class PlotWindow(QWidget):
 
     def plot_curves(self):
         """Plot Growth curves based on plotting window input"""
-
+        log.info('Plot Curves')
         #TODO: Create data integrity test function here
         check=self.check_plotinput_integrity()
         if len(check)>0:
@@ -1949,7 +2011,7 @@ class PlotWindow(QWidget):
 
 class BrowseFiles(QWidget):
     """Class to open a separate window for input file selection"""
-
+    log.info('Browse Files')
     def __init__(self):
         super().__init__()
         self.left = 10
@@ -1971,6 +2033,7 @@ class BrowseFiles(QWidget):
 
 def main():
     """Start up GUI application"""
+    log.info('Starting GUI Application')
     app=QApplication([])
 
     window=MainWindow()
